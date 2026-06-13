@@ -1,0 +1,92 @@
+plugins {
+    alias(libs.plugins.android.application)
+    alias(libs.plugins.kotlin.android)
+    id 'com.chaquo.python'
+    id 'kotlin-kapt'
+}
+
+android {
+    namespace 'com.example.rhythmic'
+    compileSdk 35
+
+    defaultConfig {
+        applicationId "com.example.rhythmic"
+        minSdk 24
+        targetSdk 35
+        versionCode 1
+        versionName "1.0"
+
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+
+        // 2. BU BLOĞU EKLE (Gerekli işlemci mimarileri)
+        ndk {
+            abiFilters "armeabi-v7a", "arm64-v8a", "x86", "x86_64"
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_11
+        targetCompatibility JavaVersion.VERSION_11
+    }
+    kotlinOptions {
+        jvmTarget = '11'
+    }
+    buildFeatures {
+        viewBinding true
+        compose false
+    }
+}
+
+// 3. PYTHON YAPILANDIRMASI (android bloğunun dışına, en alta olabilir)
+chaquopy {
+    defaultConfig {
+        version "3.10" // Kullanmak istediğin Python sürümü
+        //pip ile kütüphane kurmak istersen burayı kullanacaksın:
+        pip {
+            // install "yt-dlp"  <-- BUNU SİLİYORUZ.
+
+            // YERİNE BUNU YAZIYORUZ (Direkt GitHub'daki en son kodları indirir):
+            install "https://github.com/yt-dlp/yt-dlp/archive/master.zip"
+            install "requests"
+        }
+    }
+}
+
+// Bu bloğu 'dependencies' bloğunun hemen üstüne yapıştır
+configurations.all {
+    resolutionStrategy {
+        // Sorun çıkaran kütüphaneleri zorla stabil sürüme çekiyoruz
+        force 'androidx.core:core-ktx:1.13.1'
+        force 'androidx.core:core:1.13.1'
+        force 'androidx.activity:activity-ktx:1.9.0'
+        force 'androidx.activity:activity:1.9.0'
+        force 'androidx.activity:activity-compose:1.9.0'
+    }
+}
+
+dependencies {
+    implementation 'androidx.core:core-ktx:1.13.1'
+    implementation 'androidx.appcompat:appcompat:1.6.1'
+    implementation 'com.google.android.material:material:1.11.0'
+    implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
+
+    // Chaquopy için gerekli olabilir ama şimdilik temel kütüphaneler yeterli
+    testImplementation 'junit:junit:4.13.2'
+    androidTestImplementation 'androidx.test.ext:junit:1.1.5'
+    androidTestImplementation 'androidx.test.espresso:espresso-core:3.5.1'
+    implementation 'com.github.bumptech.glide:glide:4.16.0'
+    implementation "androidx.media:media:1.6.0"
+    implementation 'com.google.code.gson:gson:2.10.1'
+
+    // ROOM DATABASE (SQL)
+    def room_version = "2.6.1"
+    implementation "androidx.room:room-runtime:$room_version"
+    implementation "androidx.room:room-ktx:$room_version"
+    kapt "androidx.room:room-compiler:$room_version"
+}
