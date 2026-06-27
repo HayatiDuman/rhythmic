@@ -1,6 +1,5 @@
 package com.example.rhythmic
 
-import android.content.ContentUris
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
@@ -17,13 +16,11 @@ import androidx.lifecycle.MutableLiveData
 import com.example.rhythmic.database.AppDatabase
 import com.example.rhythmic.database.MusicEntity
 import java.io.File
-import java.net.URL
 import java.util.Random
 import java.util.concurrent.TimeUnit
 
 object MusicManager {
 
-    // --- Değişmeyen Kısımlar (Regex, Player, Init vs.) ---
     private val ARTIST_TITLE_REGEX = Regex("\\s*(?:-|—|–|\\||｜)\\s*")
     private val JUNK_KEYWORDS = listOf("official", "video", "audio", "visualiser", "lyrics", "lyric", "hd", "4k", "red bull", "music", "ai")
 
@@ -38,33 +35,40 @@ object MusicManager {
     val isLoopMode = MutableLiveData(false)
     val liveMusicList = MutableLiveData<List<MusicModel>>()
 
+    // MusicManager.kt içindeki mevcut init fonksiyonunun en altına ekleme yapıyoruz:
     fun init(context: Context) {
         appContext = context.applicationContext
         database = AppDatabase.getDatabase(context)
+
+        // 🔥 HAFIZADAN ESKİ DURUMLARI ÇEK
+        val prefs = context.getSharedPreferences("RhythmicPlayerPrefs", Context.MODE_PRIVATE)
+        isShuffleMode.value = prefs.getBoolean("player_shuffle", false)
+        isLoopMode.value = prefs.getBoolean("player_loop", false)
+
+        // NewPipe motoru (Mevcut kodun aynen kalsın...)
+        Thread {
+            try {
+                org.schabi.newpipe.extractor.NewPipe.init(OkHttpDownloader.getInstance())
+                Log.d("NewPipe_Setup", "NewPipe Extractor motoru başarıyla ilklendirildi.")
+            } catch (e: Exception) { Log.e("NewPipe_Setup", "Motor ilklendirme hatası: ${e.message}") }
+        }.start()
+
         Thread { loadFromDatabase() }.start()
     }
 
-    // --------------------------------------------------
-    // 🔄 REFRESH LIBRARY (MediaStore + FS Fallback)
-    // --------------------------------------------------
     fun refreshLibrary(onComplete: () -> Unit) {
         val context = appContext ?: return
-
         Thread {
             scanWithMediaStore(context)
-            scanWithFileSystem(context)   // 🔥 ASIL FARK BURADA
+            scanWithFileSystem(context)
             loadFromDatabase()
             Handler(Looper.getMainLooper()).post { onComplete() }
         }.start()
     }
 
-    // --------------------------------------------------
-    // 1️⃣ MediaStore Scan (mevcut mantık korunuyor)
-    // --------------------------------------------------
     private fun scanWithMediaStore(context: Context) {
         val resolver = context.contentResolver
         val uri = MediaStore.Audio.Media.EXTERNAL_CONTENT_URI
-
         val projection = arrayOf(
             MediaStore.Audio.Media.DATA,
             MediaStore.Audio.Media.DURATION,
@@ -81,27 +85,8 @@ object MusicManager {
             val dispCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DISPLAY_NAME)
 
             while (cursor.moveToNext()) {
-
                 val filePath = cursor.getString(pathCol) ?: continue
-                val fileExists = File(filePath).exists()
-
-                Log.d(
-                    "MEDIA_STORE_SCAN",
-                    """
-                PATH=$filePath
-                EXISTS=$fileExists
-                TITLE=${cursor.getString(titleCol)}
-                ARTIST=${cursor.getString(artistCol)}
-                DISPLAY=${cursor.getString(dispCol)}
-                """.trimIndent()
-                )
-
-                // 🔥 ASIL PROBLEM BURADA ÇIKACAK
-                if (!fileExists) {
-                    Log.w("MEDIA_STORE_GHOST", "Ghost MediaStore entry: $filePath")
-                    continue
-                }
-
+                if (!File(filePath).exists()) continue
                 if (database?.musicDao()?.existsByPath(filePath) == true) continue
 
                 insertMusicFromPath(
@@ -115,78 +100,47 @@ object MusicManager {
         }
     }
 
-
-    // --------------------------------------------------
-    // 2️⃣ File System Scan (MediaStore'da yoksa)
-    // --------------------------------------------------
     private fun scanWithFileSystem(context: Context) {
         val root = Environment.getExternalStorageDirectory()
-
         root.walkTopDown().forEach { file ->
             if (!file.isFile) return@forEach
-            if (!file.extension.equals("mp3", true)
-                && !file.extension.equals("m4a", true)
-                && !file.extension.equals("wav", true)
-            ) return@forEach
-
+            if (!file.extension.equals("mp3", true) && !file.extension.equals("m4a", true) && !file.extension.equals("wav", true)) return@forEach
             val path = file.absolutePath
-
-            Log.d(
-                "FS_SCAN",
-                "FOUND_FILE=$path EXISTS=${file.exists()}"
-            )
-
             if (database?.musicDao()?.existsByPath(path) == true) return@forEach
-
-            MediaScannerConnection.scanFile(
-                context,
-                arrayOf(path),
-                arrayOf("audio/*"),
-                null
-            )
+            MediaScannerConnection.scanFile(context, arrayOf(path), arrayOf("audio/*"), null)
 
             insertMusicFromPath(path, null, null, null, file.name)
         }
     }
 
-
-    // --------------------------------------------------
-    // Ortak ekleme fonksiyonu (tek kaynak)
-    // --------------------------------------------------
-    private fun insertMusicFromPath(
-        filePath: String,
-        durationMs: Long?,
-        rawTitle: String?,
-        rawArtist: String?,
-        rawDisplay: String?
-    ) {
+    private fun insertMusicFromPath(filePath: String, durationMs: Long?, rawTitle: String?, rawArtist: String?, rawDisplay: String?) {
         try {
-            val display = rawDisplay ?: File(filePath).name
-            val fileNameNoExt = display.substringBeforeLast(".")
-            val cleanName = sanitizeTitle(fileNameNoExt)
-            val originalName = File(filePath).nameWithoutExtension
-
-            var (artist, title) = parseArtistTitle(cleanName)
-
-            if (artist == "Bilinmiyor" && !rawArtist.isNullOrBlank()) {
-                artist = rawArtist
-                title = sanitizeTitle(rawTitle ?: cleanName)
+            val retriever = MediaMetadataRetriever()
+            try {
+                retriever.setDataSource(filePath)
+            } catch (e: Exception) {
+                Log.e("FS_SCAN", "MediaMetadataRetriever failed for: $filePath")
             }
 
-            val retriever = MediaMetadataRetriever()
-            retriever.setDataSource(filePath)
+            val metaTitle = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_TITLE)
+            val metaArtist = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ARTIST)
+            val durStr = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
 
-            val dur = durationMs ?: retriever.extractMetadata(
-                MediaMetadataRetriever.METADATA_KEY_DURATION
-            )?.toLongOrNull() ?: 0L
+            val display = rawDisplay ?: File(filePath).name
+            val fileNameNoExt = display.substringBeforeLast(".")
+
+            val title = metaTitle ?: rawTitle ?: sanitizeTitle(fileNameNoExt)
+            val artist = metaArtist ?: rawArtist ?: "Bilinmiyor"
+            val originalName = File(filePath).nameWithoutExtension
+
+            val dur = durationMs ?: durStr?.toLongOrNull() ?: 0L
+            val cover = extractEmbeddedCover(retriever, filePath)
 
             retriever.release()
 
             val min = TimeUnit.MILLISECONDS.toMinutes(dur)
             val sec = TimeUnit.MILLISECONDS.toSeconds(dur) % 60
             val durationStr = String.format("%02d:%02d", min, sec)
-
-            val cover = extractEmbeddedCover(filePath)
 
             database?.musicDao()?.insertMusic(
                 MusicEntity(
@@ -200,75 +154,35 @@ object MusicManager {
                     originalFileName = originalName
                 )
             )
-        } catch (e: Exception) {
-            Log.e("FS_SCAN", e.message ?: "error")
-        }
+        } catch (e: Exception) { Log.e("FS_SCAN", e.message ?: "error") }
     }
 
-
-    // -----------------------------
-    // ➕ ADD SONG (İNDİRME SONRASI)
-    // -----------------------------
     fun addSongToDatabase(model: MusicModel) {
         if (isDownloaded(model.videoId)) return
-
-        val cleanName = sanitizeTitle(model.title)
-        val (artist, title) = parseArtistTitle(cleanName)
-        val originalName = model.title
-
-        // 1. Önce Dosyanın İçine Bak (Python gömmüş mü?)
-        var localCoverPath: String? = extractEmbeddedCover(model.filePath)
-
-        // 2. Eğer Python gömmemişse, İnternet URL'sinden İndir (Yedek Plan)
-        if (localCoverPath == null && !model.albumArtPath.isNullOrEmpty() && model.albumArtPath!!.startsWith("http")) {
-            localCoverPath = downloadCoverFromUrl(model.albumArtPath!!, model.videoId)
-        }
 
         database?.musicDao()?.insertMusic(
             MusicEntity(
                 videoId = model.videoId,
-                title = title,
-                artist = artist,
+                title = model.title,
+                artist = model.artist,
                 duration = model.durationText,
                 filePath = model.filePath,
-                albumArtPath = localCoverPath,
+                albumArtPath = null,
                 dateAdded = System.currentTimeMillis(),
-                originalFileName = originalName
+                originalFileName = model.title
             )
         )
         loadFromDatabase()
     }
 
-    // --------------------------------------------------
-    // KAPAK, PARSE, PLAYER (DEĞİŞMEDİ)
-    // --------------------------------------------------
-    private fun extractEmbeddedCover(path: String): String? {
+    private fun extractEmbeddedCover(retriever: MediaMetadataRetriever, path: String): String? {
         val context = appContext ?: return null
-        val retriever = MediaMetadataRetriever()
         return try {
-            retriever.setDataSource(path)
             val art = retriever.embeddedPicture
-            retriever.release()
             if (art != null) {
-                saveBitmapToLocal(
-                    BitmapFactory.decodeByteArray(art, 0, art.size),
-                    "cover_${path.hashCode()}"
-                )
+                saveBitmapToLocal(BitmapFactory.decodeByteArray(art, 0, art.size), "cover_${path.hashCode()}")
             } else null
         } catch (_: Exception) { null }
-    }
-
-    // URL'den (İnternetten) resim indirir
-    private fun downloadCoverFromUrl(url: String, id: String): String? {
-        try {
-            val inputStream = URL(url).openStream()
-            val bitmap = BitmapFactory.decodeStream(inputStream)
-            inputStream.close()
-            return saveBitmapToLocal(bitmap, "web_cover_$id")
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
-        return null
     }
 
     private fun saveBitmapToLocal(bitmap: Bitmap, fileName: String): String? {
@@ -281,25 +195,11 @@ object MusicManager {
         return file.absolutePath
     }
 
-    // -----------------------------
-    // DİĞER FONKSİYONLAR
-    // -----------------------------
-
     private fun loadFromDatabase() {
         val entities = database?.musicDao()?.getAllMusics() ?: emptyList()
         musicList.clear()
         for (e in entities) {
             val exists = File(e.filePath).exists()
-
-            Log.d(
-                "DB_LOAD",
-                """
-            TITLE=${e.title}
-            PATH=${e.filePath}
-            EXISTS=$exists
-            VIDEO_ID=${e.videoId}
-            """.trimIndent()
-            )
             musicList.add(
                 MusicModel(
                     title = e.title,
@@ -319,17 +219,6 @@ object MusicManager {
     fun isDownloaded(videoId: String): Boolean = database?.musicDao()?.isDownloaded(videoId) ?: false
     fun deleteSong(model: MusicModel) { database?.musicDao()?.deleteById(model.videoId); loadFromDatabase() }
 
-    private fun parseArtistTitle(cleanName: String): Pair<String, String> {
-        val parts = cleanName.split(ARTIST_TITLE_REGEX).map { it.trim() }
-        if (parts.size >= 3 && parts[0].equals(parts[1], true)) return parts[0] to parts.subList(2, parts.size).joinToString(" - ")
-        if (parts.size >= 2) {
-            val artist = parts[0]
-            val isJunk = JUNK_KEYWORDS.any { artist.lowercase().contains(it) }
-            if (artist.length in 2..40 && !isJunk) return artist to parts.subList(1, parts.size).joinToString(" - ")
-        }
-        return "Bilinmiyor" to cleanName
-    }
-
     private fun sanitizeTitle(rawTitle: String): String {
         var title = rawTitle
         title = title.replace(Regex("(?:\\[|\\(|_)[-a-zA-Z0-9_]{11}(?:\\]|\\)|_)?$"), "")
@@ -338,7 +227,6 @@ object MusicManager {
         return title.replace("_", " ").replace(Regex("\\s+"), " ").trim().removePrefix("-").removeSuffix("-").trim()
     }
 
-    // Player...
     var currentSongIndex = -1
     fun playMusic(index: Int) {
         if (index !in musicList.indices) return
@@ -357,6 +245,7 @@ object MusicManager {
     }
 
     fun pauseResume() { mediaPlayer?.let { if (it.isPlaying) { it.pause(); isPlaying.postValue(false) } else { it.start(); isPlaying.postValue(true) } } }
+
     fun playNext(auto: Boolean = false) {
         if (musicList.isEmpty()) return
         if (auto && isLoopMode.value == true) { playMusic(currentSongIndex); return }
@@ -365,15 +254,41 @@ object MusicManager {
         else { nextIndex++; if (nextIndex >= musicList.size) nextIndex = 0 }
         playMusic(nextIndex)
     }
+
     fun playPrevious() {
         if (musicList.isEmpty()) return
         var prev = currentSongIndex - 1
         if (prev < 0) prev = musicList.size - 1
         playMusic(prev)
     }
+
     fun seekTo(pos: Int) = mediaPlayer?.seekTo(pos)
     fun getDuration() = mediaPlayer?.duration ?: 0
     fun getCurrentPosition() = mediaPlayer?.currentPosition ?: 0
-    fun toggleShuffle() = isShuffleMode.postValue(!(isShuffleMode.value ?: false))
-    fun toggleLoop() = isLoopMode.postValue(!(isLoopMode.value ?: false))
+    // Mevcut toggle fonksiyonlarını hafızaya kaydedecek şekilde güncelliyoruz:
+    fun toggleShuffle() {
+        val context = appContext ?: return
+        val prefs = context.getSharedPreferences("RhythmicPlayerPrefs", Context.MODE_PRIVATE)
+        val newValue = !(isShuffleMode.value ?: false)
+
+        isShuffleMode.postValue(newValue)
+        prefs.edit().putBoolean("player_shuffle", newValue).apply()
+    }
+
+    fun toggleLoop() {
+        val context = appContext ?: return
+        val prefs = context.getSharedPreferences("RhythmicPlayerPrefs", Context.MODE_PRIVATE)
+        val newValue = !(isLoopMode.value ?: false)
+
+        isLoopMode.postValue(newValue)
+        prefs.edit().putBoolean("player_loop", newValue).apply()
+    }
+
+    // --------------------------------------------------
+    // 🛠️ FFMPEG BINARY KÖPRÜSÜ (JNI SYMLINK)
+    // --------------------------------------------------
+    fun getFFmpegPath(context: Context): String {
+        // Android'in az önce çıkarttığı resmi ve yetkili kütüphane klasörünü döndür
+        return context.applicationInfo.nativeLibraryDir
+    }
 }

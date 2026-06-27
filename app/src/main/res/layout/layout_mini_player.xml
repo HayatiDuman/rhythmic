@@ -3,7 +3,7 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:background="#212121"
+    android:background="?attr/colorSurface"
     android:clickable="true"
     android:focusable="true"
     android:elevation="16dp"
@@ -15,6 +15,7 @@
         android:layout_width="70dp"
         android:layout_height="70dp"
         app:cardCornerRadius="8dp"
+        app:cardElevation="0dp"
         android:layout_marginStart="12dp"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent">
@@ -25,7 +26,7 @@
             android:layout_height="match_parent"
             android:src="@android:drawable/ic_menu_gallery"
             android:scaleType="centerCrop"
-            android:background="#424242"/>
+            android:background="?attr/colorOutline"/>
     </androidx.cardview.widget.CardView>
 
     <TextView
@@ -33,7 +34,7 @@
         android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:text="Şarkı Adı"
-        android:textColor="#FFFFFF"
+        android:textColor="?android:attr/textColorPrimary"
         android:textSize="14sp"
         android:textStyle="bold"
         android:maxLines="1"
@@ -57,14 +58,17 @@
 
         <ImageView
             android:id="@+id/btnShuffle"
-            android:layout_width="28dp"
-            android:layout_height="28dp"
+            android:layout_width="30dp"
+            android:layout_height="30dp"
             android:padding="4dp"
             android:src="@android:drawable/ic_menu_sort_alphabetically"
-            app:tint="#757575" />
+            app:tint="?attr/colorControlNormal"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:clickable="true"
+            android:focusable="true"/>
 
         <Space
-            android:layout_width="20dp"
+            android:layout_width="16dp"
             android:layout_height="wrap_content" />
 
         <ImageView
@@ -72,23 +76,27 @@
             android:layout_width="32dp"
             android:layout_height="32dp"
             android:src="@android:drawable/ic_media_previous"
-            app:tint="#E0E0E0" />
+            app:tint="?android:attr/textColorPrimary"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:clickable="true"
+            android:focusable="true"/>
 
         <Space
-            android:layout_width="20dp"
+            android:layout_width="16dp"
             android:layout_height="wrap_content" />
 
         <ImageView
             android:id="@+id/btnMiniPlay"
             android:layout_width="40dp"
             android:layout_height="40dp"
-            android:background="@drawable/bg_circle_play"
+            android:background="?attr/selectableItemBackgroundBorderless"
             android:clickable="true"
+            android:focusable="true"
             android:src="@android:drawable/ic_media_play"
-            app:tint="#FFFFFF" />
+            app:tint="?attr/colorSecondary" />
 
         <Space
-            android:layout_width="20dp"
+            android:layout_width="16dp"
             android:layout_height="wrap_content" />
 
         <ImageView
@@ -96,19 +104,25 @@
             android:layout_width="32dp"
             android:layout_height="32dp"
             android:src="@android:drawable/ic_media_next"
-            app:tint="#E0E0E0" />
+            app:tint="?android:attr/textColorPrimary"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:clickable="true"
+            android:focusable="true"/>
 
         <Space
-            android:layout_width="20dp"
+            android:layout_width="16dp"
             android:layout_height="wrap_content" />
 
         <ImageView
             android:id="@+id/btnLoop"
-            android:layout_width="28dp"
-            android:layout_height="28dp"
+            android:layout_width="30dp"
+            android:layout_height="30dp"
             android:padding="4dp"
             android:src="@android:drawable/ic_menu_rotate"
-            app:tint="#757575" />
+            app:tint="?attr/colorControlNormal"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:clickable="true"
+            android:focusable="true"/>
 
     </LinearLayout>
 
@@ -119,7 +133,7 @@
         android:layout_marginStart="12dp"
         android:layout_marginBottom="5dp"
         android:text="00:00"
-        android:textColor="#BDBDBD"
+        android:textColor="?android:attr/textColorSecondary"
         android:textSize="10sp"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintStart_toStartOf="parent" />
@@ -131,8 +145,9 @@
         android:layout_marginHorizontal="4dp"
         android:layout_marginTop="5dp"
         android:layout_marginBottom="-3dp"
-        android:progressTint="#6200EE"
-        android:thumbTint="#6200EE"
+        android:progressTint="?attr/colorSecondary"
+        android:thumbTint="?attr/colorSecondary"
+        android:progressBackgroundTint="?attr/colorOutline"
         app:layout_constraintBottom_toBottomOf="@id/tvCurrentTime"
         app:layout_constraintEnd_toStartOf="@id/tvTotalTime"
         app:layout_constraintHorizontal_bias="0.444"
@@ -145,7 +160,7 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:text="00:00"
-        android:textColor="#BDBDBD"
+        android:textColor="?android:attr/textColorSecondary"
         android:textSize="10sp"
         android:layout_marginEnd="12dp"
         app:layout_constraintEnd_toEndOf="parent"

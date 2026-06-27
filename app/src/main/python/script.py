@@ -1,6 +1,7 @@
 import os
 import yt_dlp
 import traceback
+from yt_dlp.postprocessor.ffmpeg import FFmpegPostProcessor
 
 
 COMMON_HEADERS = {
@@ -12,93 +13,69 @@ COMMON_HEADERS = {
 }
 
 AUDIO_BITRATE_KBPS = 128
-VIDEO_BITRATE_KBPS = 2500
 
-def _format_sure(seconds):
-    """Saniyeyi mm:ss veya hh:mm:ss formatına çevirir"""
+# ---------------------------------------------------------
+# 1. ARAMA KATMANI (SEARCH LAYER)
+# ---------------------------------------------------------
+_ARAMA_OTURUMLARI = {}
+
+def youtube_ara(sorgu, yeni_arama=True):
+    global _ARAMA_OTURUMLARI
     try:
-        seconds = int(seconds)
-        m, s = divmod(seconds, 60)
-        if m >= 60:
-            h, m = divmod(m, 60)
-            return f"{h}:{m:02d}:{s:02d}"
-        return f"{m}:{s:02d}"
-    except:
-        return ""
+        if yeni_arama:
+            arama_objesi = VideosSearch(sorgu)
+            _ARAMA_OTURUMLARI[sorgu] = arama_objesi
+            islenen_liste = arama_objesi.result().get('result', [])
+        else:
+            arama_objesi = _ARAMA_OTURUMLARI.get(sorgu)
+            if not arama_objesi:
+                return ["Hata: Arama oturumu zaman aşımına uğradı."]
+            try:
+                has_more = arama_objesi.next()
+            except Exception as e:
+                hata_mesaji = str(e)
+                if "NoneType" in hata_mesaji:
+                    hata_mesaji = "YouTube token reddetti (NoneType)"
+                return [f"Hata: {hata_mesaji}"]
 
+            if not has_more:
+                return []
+            islenen_liste = arama_objesi.result().get('result', [])
 
-def youtube_ara(sorgu):
-    """
-    Format: Başlık ||| URL ||| ResimURL ||| Süre ||| Sanatçı
-    """
-    ydl_opts = {
-        "quiet": True,
-        "skip_download": True,
-        "extract_flat": True,
-        "noplaylist": True,
-        "nocheckcertificate": True,
-        "http_headers": COMMON_HEADERS,
-    }
+        sonuclar = []
+        for entry in islenen_liste:
+            if entry.get('type') != 'video': continue
+            video_id = entry.get('id')
+            if not video_id: continue
 
-    sonuclar = []
+            url = entry.get('link') or f"https://www.youtube.com/watch?v={video_id}"
+            baslik = entry.get('title', 'Bilinmiyor')
+            sure_str = entry.get('duration')
+            if not sure_str: continue
 
-    try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(f"ytsearch60:{sorgu}", download=False)
+            thumbnails = entry.get('thumbnails', [])
+            resim = thumbnails[0]['url'] if thumbnails else f"https://i.ytimg.com/vi/{video_id}/mqdefault.jpg"
+            sanatci = entry.get('channel', {}).get('name', 'YouTube')
 
-        for entry in info.get("entries", []):
+            parts = sure_str.split(':')
+            saniye = 0
+            if len(parts) == 2:
+                saniye = int(parts[0]) * 60 + int(parts[1])
+            elif len(parts) == 3:
+                saniye = int(parts[0]) * 3600 + int(parts[1]) * 60 + int(parts[2])
 
-            # Playlistleri ele
-            if entry.get("_type") == "playlist":
-                continue
+            audio_mb = str(round((AUDIO_BITRATE_KBPS * saniye) / 8 / 1024, 2))
+            sonuclar.append(f"{baslik}|||{url}|||{resim}|||{sure_str}|||{sanatci}|||{video_id}|||{audio_mb}|||Bilinmiyor")
 
-            video_id = entry.get("id")
-            if not video_id:
-                continue
-
-            # URL
-            url = entry.get("url") or f"https://www.youtube.com/watch?v={video_id}"
-            if "list=" in url or "playlist" in url:
-                continue
-
-            audio_mb="Bilinmiyor"
-            video_mb="Bilinmiyor"
-
-            # Süre (canlı yayın vs elenir)
-            duration_seconds = entry.get("duration")
-            if not duration_seconds:
-                continue
-            else:
-                audio_mb = str(round(
-                    (AUDIO_BITRATE_KBPS * duration_seconds) / 8 / 1024, 2
-                ))
-
-                video_mb = str(round(
-                    (VIDEO_BITRATE_KBPS * duration_seconds) / 8 / 1024, 2
-                ))
-
-            baslik = entry.get("title", "Bilinmiyor")
-
-            resim = (
-                entry.get("thumbnail")
-                or f"https://i.ytimg.com/vi/{video_id}/mqdefault.jpg"
-            )
-
-            sure = entry.get("duration_string") or _format_sure(duration_seconds)
-
-            sanatci = entry.get("uploader", "YouTube")
-
-            sonuclar.append(
-                f"{baslik}|||{url}|||{resim}|||{sure}|||{sanatci}|||{video_id}|||{audio_mb}|||{video_mb}"
-            )
-
+        return sonuclar
     except Exception as e:
         traceback.print_exc()
         return [f"Hata: {str(e)}"]
 
-    return sonuclar
-
-def videoyu_indir(url, kayit_yolu, format_turu, progress_cb):
+# ---------------------------------------------------------
+# 2. İNDİRME KATMANI (DOWNLOAD LAYER)
+# ---------------------------------------------------------
+def videoyu_indir(url, kayit_yolu, progress_cb):
     try:
         os.makedirs(kayit_yolu, exist_ok=True)
 
@@ -106,36 +83,30 @@ def videoyu_indir(url, kayit_yolu, format_turu, progress_cb):
             if d['status'] == 'downloading':
                 total = d.get('total_bytes') or d.get('total_bytes_estimate')
                 downloaded = d.get('downloaded_bytes')
-
                 if total and downloaded:
                     percent = int(downloaded * 100 / total)
                     progress_cb(percent)
-
             elif d['status'] == 'finished':
                 progress_cb(100)
 
         ydl_opts = {
             'progress_hooks': [hook],
             "outtmpl": f"{kayit_yolu}/%(title)s.%(ext)s",
-
-            """ # 1. RESMİ AYRI DOSYA OLARAK İNDİR (.jpg veya .webp)
-            "writethumbnail": True, """
-
-            # 2. FFMPEG GÖMME İŞLEMİNİ İPTAL ETTİK (SİLDİK)
-            "postprocessors": [],
-
+            # En kaliteli, saf ses formatını seçiyoruz
+            "format": "140/bestaudio/best",
             "skip_download": False,
             "quiet": True,
             "no_warnings": True,
             "nocheckcertificate": True,
             "noplaylist": True,
-            "http_headers": COMMON_HEADERS,
-        }
 
-        if format_turu == "audio":
-            ydl_opts["format"] = "140/251/18/bestaudio"
-        else:
-            ydl_opts["format"] = "22/18/best[ext=mp4]"
+            # 🔥 İŞTE SİHİRLİ DOKUNUŞ BURASI 🔥
+            # YouTube web sayfasını kullanmayı reddediyor, doğrudan Android ve iOS API'lerini zorluyoruz.
+            # Bu sayede "Bot musun?" doğrulama ekranı (HTML) yerine doğrudan saf API verisi gelir.
+            "extractor_args": {
+                "youtube": ["client=ANDROID,IOS"]
+            }
+        }
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=True)
@@ -145,20 +116,60 @@ def videoyu_indir(url, kayit_yolu, format_turu, progress_cb):
         traceback.print_exc()
         return f"Hata: {str(e)}"
 
-def download_with_progress(url, progress_callback):
-    def hook(d):
-        if d['status'] == 'downloading':
-            total = d.get('total_bytes') or d.get('total_bytes_estimate')
-            downloaded = d.get('downloaded_bytes')
 
-            if total and downloaded:
-                percent = int(downloaded * 100 / total)
-                progress_callback.accept(percent)
+# ---------------------------------------------------------
+# 3. METADATA & STREAM KATMANI (YENİ)
+# ---------------------------------------------------------
+def get_video_info(url):
+    try:
+        ydl_opts = {
+            "quiet": True,
+            "no_warnings": True,
+            "nocheckcertificate": True,
+            "extractor_args": {
+                "youtube": ["client=ANDROID,IOS"]
+            }
+        }
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=False)
 
-    ydl_opts = {
-        'progress_hooks': [hook],
-        'outtmpl': '/storage/emulated/0/Music/Rhythmic/%(title)s.%(ext)s'
-    }
+            view_count = info.get('view_count', 0)
+            like_count = info.get('like_count', 0)
+            upload_date = info.get('upload_date', 'Bilinmiyor')
+            exact_video_id = info.get('id', '')
+            #exact_video_id = 'lDpXhLzJQsA'
 
-    with YoutubeDL(ydl_opts) as ydl:
-        ydl.download([url])
+            if len(upload_date) == 8 and upload_date.isdigit():
+                upload_date = f"{upload_date[6:8]}.{upload_date[4:6]}.{upload_date[:4]}"
+
+            try:
+                view_count_str = f"{view_count:,}".replace(",", ".")
+                like_count_str = f"{like_count:,}".replace(",", ".")
+            except:
+                view_count_str = str(view_count)
+                like_count_str = str(like_count)
+
+            return f"{view_count_str}|||{upload_date}|||{like_count_str}|||{exact_video_id}"
+    except Exception as e:
+        traceback.print_exc()
+        return f"Hata: {str(e)}"
+
+def get_stream_url(url):
+    try:
+        # Tıpkı indirmedeki gibi en iyi ses formatını seçiyoruz
+        ydl_opts = {
+            "quiet": True,
+            "no_warnings": True,
+            "nocheckcertificate": True,
+            "format": "bestaudio[ext=m4a]/140/bestaudio/best",
+            "extractor_args": {
+                "youtube": ["client=ANDROID,IOS"]
+            }
+        }
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=False)
+            # Seçilen formatın doğrudan oynatılabilir (stream) adresini döndürüyoruz
+            return info.get('url', "Hata: Stream adresi bulunamadı")
+    except Exception as e:
+        traceback.print_exc()
+        return f"Hata: {str(e)}"

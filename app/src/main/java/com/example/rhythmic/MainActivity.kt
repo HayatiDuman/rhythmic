@@ -7,6 +7,7 @@ import android.os.*
 import android.view.View
 import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
+import androidx.appcompat.app.AppCompatDelegate
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
 import com.bumptech.glide.Glide
@@ -21,11 +22,11 @@ class MainActivity : AppCompatActivity() {
     }
 
     // Fragmentlar
-    private val homeFragment = HomeFragment()
-    private val audioFragment = AudioFragment()
-    private val videoFragment = VideoFragment()
-    private val settingsFragment = SettingsFragment()
-    private var activeFragment: Fragment = homeFragment
+    private lateinit var homeFragment: HomeFragment
+    private lateinit var audioFragment: AudioFragment
+    //private lateinit var videoFragment: VideoFragment
+    private lateinit var settingsFragment: SettingsFragment
+    private lateinit var activeFragment: Fragment
 
     // Mini Player
     private lateinit var miniContainer: FrameLayout
@@ -54,11 +55,23 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        // 🔥 1. SİSTEMİ DEVREDEN ÇIKAR: Gece modunu kapalı varsay, kontrol bizde.
+        AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_NO)
+
+        // 🔥 2. SEÇİLEN TEMAYI YÜKLE: "setContentView"dan önce yapılmalı!
+        val prefs = getSharedPreferences("RhythmicPrefs", Context.MODE_PRIVATE)
+
+        // 0 = Light, 1 = Dark, 2 = Black
+        when (prefs.getInt("theme_choice", 0)) {
+            0 -> setTheme(R.style.Theme_Rhythmic_Light)
+            1 -> setTheme(R.style.Theme_Rhythmic_Night)
+            2 -> setTheme(R.style.Theme_Rhythmic_Black)
+        }
+
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
         MusicManager.init(this)
-
         startService(Intent(this, MusicService::class.java))
 
         if (!Python.isStarted()) {
@@ -83,35 +96,51 @@ class MainActivity : AppCompatActivity() {
     private fun setupNavigation() {
         val bottomNav = findViewById<BottomNavigationView>(R.id.bottom_navigation)
         val prefs = getSharedPreferences("RhythmicPrefs", Context.MODE_PRIVATE)
-
         val lastTab = prefs.getInt("last_tab", R.id.nav_home)
 
-        val targetFragment = when (lastTab) {
+        // 🔥 KRİTİK NOKTA: Ekran yeniden mi çiziliyor, yoksa ilk kez mi açılıyor?
+        val homeTag = supportFragmentManager.findFragmentByTag("home")
+
+        if (homeTag == null) {
+            // UYGULAMA İLK KEZ AÇILIYOR (Fragmentları sıfırdan yarat)
+            homeFragment = HomeFragment()
+            audioFragment = AudioFragment()
+            //videoFragment = VideoFragment()
+            settingsFragment = SettingsFragment()
+
+            supportFragmentManager.beginTransaction().apply {
+                add(R.id.fragment_container, settingsFragment, "settings").hide(settingsFragment)
+                //add(R.id.fragment_container, videoFragment, "video").hide(videoFragment)
+                add(R.id.fragment_container, audioFragment, "audio").hide(audioFragment)
+                add(R.id.fragment_container, homeFragment, "home").hide(homeFragment)
+                commit()
+            }
+        } else {
+            // TEMA DEĞİŞTİ! (Eski fragmentları hafızadan geri çağır, kasıntı yapma)
+            homeFragment = supportFragmentManager.findFragmentByTag("home") as HomeFragment
+            audioFragment = supportFragmentManager.findFragmentByTag("audio") as AudioFragment
+            //videoFragment = supportFragmentManager.findFragmentByTag("video") as VideoFragment
+            settingsFragment = supportFragmentManager.findFragmentByTag("settings") as SettingsFragment
+        }
+
+        // Aktif olanı belirle ve ekrana getir
+        activeFragment = when (lastTab) {
             R.id.nav_audio -> audioFragment
-            R.id.nav_video -> videoFragment
+            //R.id.nav_video -> videoFragment
             R.id.nav_settings -> settingsFragment
             else -> homeFragment
         }
 
-        supportFragmentManager.beginTransaction().apply {
-            add(R.id.fragment_container, settingsFragment).hide(settingsFragment)
-            add(R.id.fragment_container, videoFragment).hide(videoFragment)
-            add(R.id.fragment_container, audioFragment).hide(audioFragment)
-            add(R.id.fragment_container, homeFragment).hide(homeFragment)
-            commit()
-        }
-
-        supportFragmentManager.executePendingTransactions()
-        supportFragmentManager.beginTransaction().show(targetFragment).commit()
-        activeFragment = targetFragment
+        supportFragmentManager.beginTransaction().show(activeFragment).commit()
         bottomNav.selectedItemId = lastTab
 
+        // Tıklama olayları...
         bottomNav.setOnItemSelectedListener { item ->
             prefs.edit().putInt("last_tab", item.itemId).apply()
             when (item.itemId) {
                 R.id.nav_home -> switchFragment(homeFragment)
                 R.id.nav_audio -> switchFragment(audioFragment)
-                R.id.nav_video -> switchFragment(videoFragment)
+                //R.id.nav_video -> switchFragment(videoFragment)
                 R.id.nav_settings -> switchFragment(settingsFragment)
             }
             true
@@ -134,7 +163,7 @@ class MainActivity : AppCompatActivity() {
         miniContainer = findViewById(R.id.miniPlayerContainer)
         tvMiniBaslik = findViewById(R.id.tvMiniBaslik)
         btnMiniPlay = findViewById(R.id.btnMiniPlay)
-        imgMiniKapak = findViewById(R.id.imgMiniKapak)
+        imgMiniKapak = findViewById(R.id.imgMiniKapak) // Mini Player'daki kapak resmi
         btnNext = findViewById(R.id.btnNext)
         btnPrev = findViewById(R.id.btnPrev)
         btnShuffle = findViewById(R.id.btnShuffle)
@@ -143,16 +172,19 @@ class MainActivity : AppCompatActivity() {
         tvCurrentTime = findViewById(R.id.tvCurrentTime)
         tvTotalTime = findViewById(R.id.tvTotalTime)
 
+        imgMiniKapak.setOnClickListener {
+            val fullPlayerDialog = FullScreenPlayerDialog()
+            fullPlayerDialog.show(supportFragmentManager, "FullScreenPlayer")
+        }
+
         MusicManager.currentSong.observe(this) { song ->
             song ?: return@observe
 
             miniContainer.visibility = View.VISIBLE
             tvMiniBaslik.text = song.title
 
-            Glide.with(this)
-                .load(song.albumArtPath)
-                .placeholder(R.drawable.ic_music_placeholder)
-                .into(imgMiniKapak)
+            // 🔥 YENİ: Mini Player kapağı için yazdığımız eklentiyi kullanıyoruz
+            imgMiniKapak.loadEmbeddedCover(song.filePath)
 
             val duration = MusicManager.getDuration()
             miniSeekBar.max = duration
@@ -174,6 +206,15 @@ class MainActivity : AppCompatActivity() {
         btnShuffle.setOnClickListener { MusicManager.toggleShuffle() }
         btnLoop.setOnClickListener { MusicManager.toggleLoop() }
 
+        // Canlı Durum Gözlemcileri (Mini Player Rengini Yönetir)
+        MusicManager.isShuffleMode.observe(this) { isShuffle ->
+            updateMiniButtonTint(btnShuffle, isShuffle)
+        }
+
+        MusicManager.isLoopMode.observe(this) { isLoop ->
+            updateMiniButtonTint(btnLoop, isLoop)
+        }
+
         miniSeekBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(sb: SeekBar?, progress: Int, fromUser: Boolean) {
                 if (fromUser) tvCurrentTime.text = formatTime(progress)
@@ -188,6 +229,13 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         })
+    }
+
+    private fun updateMiniButtonTint(imageView: ImageView, isActive: Boolean) {
+        val typedValue = android.util.TypedValue()
+        val attrId = if (isActive) com.google.android.material.R.attr.colorSecondary else com.google.android.material.R.attr.colorControlNormal
+        theme.resolveAttribute(attrId, typedValue, true)
+        imageView.setColorFilter(typedValue.data)
     }
 
     // -----------------------------
@@ -287,4 +335,36 @@ class MainActivity : AppCompatActivity() {
             }
             .show()
     }
+}
+
+// -------------------------------------------------------------------
+// 🎨 IMAGEVIEW EKLENTİSİ: İÇİNE ŞARKI YOLU VERİLEN HER RESMİ OTOMATİK OKUR
+// -------------------------------------------------------------------
+fun ImageView.loadEmbeddedCover(filePath: String?) {
+    com.bumptech.glide.Glide.with(this.context).clear(this)
+    this.setImageResource(android.R.drawable.ic_menu_gallery) // İkonu kendine göre ayarlayabilirsin
+
+    if (filePath.isNullOrEmpty()) return
+
+    this.tag = filePath
+
+    Thread {
+        try {
+            val retriever = android.media.MediaMetadataRetriever()
+            retriever.setDataSource(filePath)
+            val art = retriever.embeddedPicture
+            retriever.release()
+
+            if (art != null && this.tag == filePath) {
+                this.post {
+                    com.bumptech.glide.Glide.with(this.context)
+                        .asBitmap()
+                        .load(art)
+                        .into(this)
+                }
+            }
+        } catch (e: Exception) {
+            // Hata olursa varsayılan resim kalır
+        }
+    }.start()
 }

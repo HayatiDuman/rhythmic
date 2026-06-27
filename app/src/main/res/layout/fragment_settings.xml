@@ -4,14 +4,14 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    android:background="#F5F5F5"
+    android:background="?android:attr/windowBackground"
     android:padding="16dp">
 
     <TextView
         android:text="Ayarlar"
         android:textSize="28sp"
         android:textStyle="bold"
-        android:textColor="#000000"
+        android:textColor="?android:attr/textColorPrimary"
         android:layout_marginBottom="24dp"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content" />
@@ -21,47 +21,446 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
-        android:background="@drawable/fast_scroll_track"
+        android:background="?attr/selectableItemBackground"
         android:padding="16dp"
         android:gravity="center_vertical"
         android:clickable="true"
         android:focusable="true">
-
         <ImageView
             android:layout_width="24dp"
             android:layout_height="24dp"
             android:src="@android:drawable/ic_popup_sync"
-            app:tint="#6200EE" />
-
+            app:tint="?attr/colorPrimary" />
         <LinearLayout
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:orientation="vertical"
             android:layout_marginStart="16dp">
-
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="Kütüphaneyi Yenile"
                 android:textSize="16sp"
-                android:textColor="#000000"
+                android:textColor="?android:attr/textColorPrimary"
                 android:textStyle="bold"/>
-
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="Cihazdaki yeni müzikleri tara"
                 android:textSize="12sp"
-                android:textColor="#757575"/>
+                android:textColor="?android:attr/textColorSecondary"/>
         </LinearLayout>
-
         <ProgressBar
             android:id="@+id/progressSync"
             android:layout_width="24dp"
             android:layout_height="24dp"
             android:visibility="gone"/>
+    </LinearLayout>
 
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="16dp">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Uygulama Teması"
+            android:textSize="16sp"
+            android:textColor="?android:attr/textColorPrimary"
+            android:textStyle="bold"
+            android:layout_marginBottom="12dp"/>
+
+        <HorizontalScrollView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:scrollbars="none">
+
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical">
+
+                <com.google.android.material.card.MaterialCardView
+                    android:id="@+id/cardThemeLight"
+                    android:layout_width="95dp"
+                    android:layout_height="135dp"
+                    android:layout_marginEnd="12dp"
+                    app:cardCornerRadius="8dp"
+                    app:cardBackgroundColor="@color/light_bg_main"
+                    app:strokeColor="?attr/colorSecondary"
+                    app:strokeWidth="0dp"
+                    android:clickable="true"
+                    android:focusable="true">
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:orientation="vertical">
+
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="18dp"
+                            android:background="@color/primary_bordo"
+                            android:gravity="center_vertical"
+                            android:paddingStart="6dp"
+                            android:paddingEnd="6dp">
+                            <View
+                                android:layout_width="6dp"
+                                android:layout_height="6dp"
+                                android:background="@color/light_bg_surface"/>
+                            <View
+                                android:layout_width="0dp"
+                                android:layout_height="3dp"
+                                android:layout_weight="1"
+                                android:background="@color/light_divider"
+                                android:layout_marginStart="5dp"
+                                android:layout_marginEnd="5dp"/>
+                            <View
+                                android:layout_width="4dp"
+                                android:layout_height="4dp"
+                                android:background="@color/light_divider"/>
+                        </LinearLayout>
+
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="0dp"
+                            android:layout_weight="1"
+                            android:orientation="horizontal"
+                            android:padding="7dp"
+                            android:gravity="center_vertical">
+
+                            <View
+                                android:layout_width="28dp"
+                                android:layout_height="28dp"
+                                android:background="@color/primary_bordo"/>
+
+                            <LinearLayout
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:layout_marginStart="7dp"
+                                android:orientation="vertical">
+                                <View
+                                    android:layout_width="match_parent"
+                                    android:layout_height="3dp"
+                                    android:background="@color/light_text_primary"
+                                    android:layout_marginBottom="5dp"/>
+                                <View
+                                    android:layout_width="22dp"
+                                    android:layout_height="2dp"
+                                    android:background="@color/light_text_secondary"/>
+                            </LinearLayout>
+                        </LinearLayout>
+
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="2dp"
+                            android:orientation="horizontal"
+                            android:layout_marginStart="7dp"
+                            android:layout_marginEnd="7dp"
+                            android:layout_marginBottom="5dp">
+                            <View
+                                android:layout_width="0dp"
+                                android:layout_height="match_parent"
+                                android:layout_weight="38"
+                                android:background="@color/primary_bordo"/>
+                            <View
+                                android:layout_width="0dp"
+                                android:layout_height="match_parent"
+                                android:layout_weight="62"
+                                android:background="@color/light_divider"/>
+                        </LinearLayout>
+
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="22dp"
+                            android:orientation="horizontal"
+                            android:gravity="center"
+                            android:layout_marginBottom="5dp">
+                            <View
+                                android:layout_width="8dp"
+                                android:layout_height="8dp"
+                                android:background="@color/icon_tint_light"
+                                android:layout_marginEnd="10dp"/>
+                            <View
+                                android:layout_width="14dp"
+                                android:layout_height="14dp"
+                                android:background="@color/primary_bordo"/>
+                            <View
+                                android:layout_width="8dp"
+                                android:layout_height="8dp"
+                                android:background="@color/icon_tint_light"
+                                android:layout_marginStart="10dp"/>
+                        </LinearLayout>
+
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="Açık"
+                            android:textColor="@color/light_text_primary"
+                            android:textSize="10sp"
+                            android:textStyle="bold"
+                            android:gravity="center"
+                            android:paddingBottom="5dp"/>
+                    </LinearLayout>
+                </com.google.android.material.card.MaterialCardView>
+
+                <com.google.android.material.card.MaterialCardView
+                    android:id="@+id/cardThemeDark"
+                    android:layout_width="95dp"
+                    android:layout_height="135dp"
+                    android:layout_marginEnd="12dp"
+                    app:cardCornerRadius="8dp"
+                    app:cardBackgroundColor="@color/dark_bg_main"
+                    app:strokeColor="?attr/colorSecondary"
+                    app:strokeWidth="0dp"
+                    android:clickable="true"
+                    android:focusable="true">
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:orientation="vertical">
+
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="18dp"
+                            android:background="@color/dark_bg_surface"
+                            android:gravity="center_vertical"
+                            android:paddingStart="6dp"
+                            android:paddingEnd="6dp">
+                            <View
+                                android:layout_width="6dp"
+                                android:layout_height="6dp"
+                                android:background="@color/dark_text_secondary"/>
+                            <View
+                                android:layout_width="0dp"
+                                android:layout_height="3dp"
+                                android:layout_weight="1"
+                                android:background="@color/dark_divider"
+                                android:layout_marginStart="5dp"
+                                android:layout_marginEnd="5dp"/>
+                            <View
+                                android:layout_width="4dp"
+                                android:layout_height="4dp"
+                                android:background="@color/dark_divider"/>
+                        </LinearLayout>
+
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="0dp"
+                            android:layout_weight="1"
+                            android:orientation="horizontal"
+                            android:padding="7dp"
+                            android:gravity="center_vertical">
+
+                            <View
+                                android:layout_width="28dp"
+                                android:layout_height="28dp"
+                                android:background="@color/primary_bordo_light"/>
+
+                            <LinearLayout
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:layout_marginStart="7dp"
+                                android:orientation="vertical">
+                                <View
+                                    android:layout_width="match_parent"
+                                    android:layout_height="3dp"
+                                    android:background="@color/dark_text_primary"
+                                    android:layout_marginBottom="5dp"/>
+                                <View
+                                    android:layout_width="22dp"
+                                    android:layout_height="2dp"
+                                    android:background="@color/dark_text_secondary"/>
+                            </LinearLayout>
+                        </LinearLayout>
+
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="2dp"
+                            android:orientation="horizontal"
+                            android:layout_marginStart="7dp"
+                            android:layout_marginEnd="7dp"
+                            android:layout_marginBottom="5dp">
+                            <View
+                                android:layout_width="0dp"
+                                android:layout_height="match_parent"
+                                android:layout_weight="38"
+                                android:background="@color/primary_bordo_light"/>
+                            <View
+                                android:layout_width="0dp"
+                                android:layout_height="match_parent"
+                                android:layout_weight="62"
+                                android:background="@color/dark_divider"/>
+                        </LinearLayout>
+
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="22dp"
+                            android:orientation="horizontal"
+                            android:gravity="center"
+                            android:layout_marginBottom="5dp">
+                            <View
+                                android:layout_width="8dp"
+                                android:layout_height="8dp"
+                                android:background="@color/icon_tint_dark"
+                                android:layout_marginEnd="10dp"/>
+                            <View
+                                android:layout_width="14dp"
+                                android:layout_height="14dp"
+                                android:background="@color/primary_bordo_light"/>
+                            <View
+                                android:layout_width="8dp"
+                                android:layout_height="8dp"
+                                android:background="@color/icon_tint_dark"
+                                android:layout_marginStart="10dp"/>
+                        </LinearLayout>
+
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="Gece"
+                            android:textColor="@color/dark_text_primary"
+                            android:textSize="10sp"
+                            android:textStyle="bold"
+                            android:gravity="center"
+                            android:paddingBottom="5dp"/>
+                    </LinearLayout>
+                </com.google.android.material.card.MaterialCardView>
+
+                <com.google.android.material.card.MaterialCardView
+                    android:id="@+id/cardThemeBlack"
+                    android:layout_width="95dp"
+                    android:layout_height="135dp"
+                    android:layout_marginEnd="12dp"
+                    app:cardCornerRadius="8dp"
+                    app:cardBackgroundColor="@color/black_bg_main"
+                    app:strokeColor="?attr/colorSecondary"
+                    app:strokeWidth="0dp"
+                    android:clickable="true"
+                    android:focusable="true">
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:orientation="vertical">
+
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="18dp"
+                            android:background="@color/black_bg_surface"
+                            android:gravity="center_vertical"
+                            android:paddingStart="6dp"
+                            android:paddingEnd="6dp">
+                            <View
+                                android:layout_width="6dp"
+                                android:layout_height="6dp"
+                                android:background="@color/dark_text_secondary"/>
+                            <View
+                                android:layout_width="0dp"
+                                android:layout_height="3dp"
+                                android:layout_weight="1"
+                                android:background="@color/dark_divider"
+                                android:layout_marginStart="5dp"
+                                android:layout_marginEnd="5dp"/>
+                            <View
+                                android:layout_width="4dp"
+                                android:layout_height="4dp"
+                                android:background="@color/dark_divider"/>
+                        </LinearLayout>
+
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="0dp"
+                            android:layout_weight="1"
+                            android:orientation="horizontal"
+                            android:padding="7dp"
+                            android:gravity="center_vertical">
+
+                            <View
+                                android:layout_width="28dp"
+                                android:layout_height="28dp"
+                                android:background="@color/primary_bordo_light"/>
+
+                            <LinearLayout
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:layout_marginStart="7dp"
+                                android:orientation="vertical">
+                                <View
+                                    android:layout_width="match_parent"
+                                    android:layout_height="3dp"
+                                    android:background="@color/dark_text_primary"
+                                    android:layout_marginBottom="5dp"/>
+                                <View
+                                    android:layout_width="22dp"
+                                    android:layout_height="2dp"
+                                    android:background="@color/dark_text_secondary"/>
+                            </LinearLayout>
+                        </LinearLayout>
+
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="2dp"
+                            android:orientation="horizontal"
+                            android:layout_marginStart="7dp"
+                            android:layout_marginEnd="7dp"
+                            android:layout_marginBottom="5dp">
+                            <View
+                                android:layout_width="0dp"
+                                android:layout_height="match_parent"
+                                android:layout_weight="38"
+                                android:background="@color/primary_bordo_light"/>
+                            <View
+                                android:layout_width="0dp"
+                                android:layout_height="match_parent"
+                                android:layout_weight="62"
+                                android:background="@color/dark_divider"/>
+                        </LinearLayout>
+
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="22dp"
+                            android:orientation="horizontal"
+                            android:gravity="center"
+                            android:layout_marginBottom="5dp">
+                            <View
+                                android:layout_width="8dp"
+                                android:layout_height="8dp"
+                                android:background="@color/icon_tint_dark"
+                                android:layout_marginEnd="10dp"/>
+                            <View
+                                android:layout_width="14dp"
+                                android:layout_height="14dp"
+                                android:background="@color/primary_bordo_light"/>
+                            <View
+                                android:layout_width="8dp"
+                                android:layout_height="8dp"
+                                android:background="@color/icon_tint_dark"
+                                android:layout_marginStart="10dp"/>
+                        </LinearLayout>
+
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="Siyah"
+                            android:textColor="@color/dark_text_primary"
+                            android:textSize="10sp"
+                            android:textStyle="bold"
+                            android:gravity="center"
+                            android:paddingBottom="5dp"/>
+                    </LinearLayout>
+                </com.google.android.material.card.MaterialCardView>
+
+            </LinearLayout>
+        </HorizontalScrollView>
     </LinearLayout>
 
     <TextView
@@ -70,6 +469,6 @@
         android:text="Uygulama Sürümü: 1.0.0"
         android:gravity="center"
         android:layout_marginTop="32dp"
-        android:textColor="#9E9E9E"/>
+        android:textColor="?android:attr/textColorSecondary"/>
 
 </LinearLayout>

@@ -5,10 +5,8 @@ import android.app.AlertDialog
 import android.content.*
 import android.graphics.Color
 import android.graphics.drawable.ColorDrawable
-import android.net.Uri
 import android.os.Bundle
 import android.os.Environment
-import android.provider.MediaStore
 import android.util.Log
 import android.view.*
 import android.view.inputmethod.EditorInfo
@@ -20,17 +18,28 @@ import androidx.recyclerview.widget.RecyclerView
 import com.chaquo.python.PyObject
 import com.chaquo.python.Python
 import java.io.File
-import java.io.FileInputStream
 import java.util.function.IntConsumer
+import org.schabi.newpipe.extractor.Page
+import org.schabi.newpipe.extractor.ServiceList
+import org.schabi.newpipe.extractor.search.SearchExtractor
+import org.schabi.newpipe.extractor.stream.StreamInfoItem
+import org.schabi.newpipe.extractor.InfoItem
+import com.arthenica.ffmpegkit.FFmpegKit
+import com.arthenica.ffmpegkit.ReturnCode
+import com.bumptech.glide.Glide
+import androidx.fragment.app.activityViewModels
+import androidx.fragment.app.viewModels
 
 private const val AUDIO_BITRATE_KBPS = 192
-private const val VIDEO_BITRATE_KBPS = 2500
 
 private val PREF_SEARCH = "search_history"
 private val KEY_HISTORY = "history"
 private const val MAX_HISTORY = 5
 
 class HomeFragment : Fragment() {
+    // Hafızayı tutan ortak ViewModel
+    private val detailViewModel: SongDetailViewModel by activityViewModels()
+
     /* --- UI --- */
     private lateinit var searchInput: EditText
     private lateinit var searchButton: Button
@@ -42,7 +51,7 @@ class HomeFragment : Fragment() {
 
     /* --- Data --- */
     private lateinit var adapter: MusicAdapter
-    private val searchResults = mutableListOf<MusicModel>()
+    //private val searchResults = mutableListOf<MusicModel>()
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -56,12 +65,25 @@ class HomeFragment : Fragment() {
         setupRecyclerView()
         setupAdapter()
         setupListeners()
+
+        // Arama kutusunu geri doldur ve imleci sona al
+        if (SearchManager.currentQuery.isNotEmpty()) {
+            searchInput.setText(SearchManager.currentQuery)
+            searchInput.setSelection(SearchManager.currentQuery.length)
+        }
+
+        // Listeyi geri doldur
+        if (SearchManager.searchResults.isNotEmpty()) {
+            adapter.updateList(SearchManager.searchResults)
+            statusText.text = "${SearchManager.searchResults.size} sonuç bulundu"
+        } else if (SearchManager.isSearchLoading) {
+            showLoading("Aranıyor...")
+        }
     }
 
     /* -----------------------------
      * SETUP
      * ----------------------------- */
-
     private fun bindViews(view: View) {
         searchInput = view.findViewById(R.id.etArama)
         searchButton = view.findViewById(R.id.btnAra)
@@ -71,17 +93,40 @@ class HomeFragment : Fragment() {
     }
 
     private fun setupRecyclerView() {
-        resultList.layoutManager = LinearLayoutManager(requireContext())
+        val layoutManager = LinearLayoutManager(requireContext())
+        resultList.layoutManager = layoutManager
+
+        resultList.addOnScrollListener(object : RecyclerView.OnScrollListener() {
+            override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) {
+                super.onScrolled(recyclerView, dx, dy)
+                if (dy > 0 && !SearchManager.isSearchLoading && SearchManager.hasMoreResults) {
+                    val visibleItemCount = layoutManager.childCount
+                    val totalItemCount = layoutManager.itemCount
+                    val firstVisibleItemPosition = layoutManager.findFirstVisibleItemPosition()
+
+                    if ((visibleItemCount + firstVisibleItemPosition) >= totalItemCount - 3) {
+                        loadNextPage()
+                    }
+                }
+            }
+        })
     }
 
     private fun setupAdapter() {
-        adapter = MusicAdapter(emptyList()) { song, action ->
-            when (action) {
-                "audio" -> handleAudioDownload(song)
-                "video" -> downloadVideo(song)
-                "info" -> showInfo(song)
+        adapter = MusicAdapter(
+            musicList = emptyList(),
+            onActionClick = { song, action ->
+                when (action) {
+                    "audio" -> handleAudioDownload(song)
+                    "info" -> showRichInfo(song) // YENİ FONKSİYON
+                    //"play" -> playStream(song)
+                }
+            },
+            onRetryClick = {
+                adapter.showLoadingFooter()
+                performSearch(SearchManager.currentQuery, isLoadMore = true)
             }
-        }
+        )
         resultList.adapter = adapter
     }
 
@@ -93,15 +138,14 @@ class HomeFragment : Fragment() {
             }
         }
         searchInput.setOnEditorActionListener { _, actionId, event ->
-            if (
-                actionId == EditorInfo.IME_ACTION_SEARCH ||
+            if (actionId == EditorInfo.IME_ACTION_SEARCH ||
                 (event?.keyCode == KeyEvent.KEYCODE_ENTER && event.action == KeyEvent.ACTION_DOWN)
             ) {
                 val query = searchInput.text.toString().trim()
                 if (query.isNotEmpty()) {
                     triggerSearch()
                 }
-                true // olayı tükettik
+                true
             } else {
                 false
             }
@@ -117,80 +161,155 @@ class HomeFragment : Fragment() {
     }
 
     /* -----------------------------
-     * 🔍 SEARCH
+     * 🔍 SEARCH & PAGINATION
      * ----------------------------- */
+    private fun triggerSearch() {
+        val query = searchInput.text.toString().trim()
+        if (query.isNotEmpty()) {
+            saveSearchQuery(query)
+            SearchManager.currentQuery = query
+            SearchManager.hasMoreResults = true
+            performSearch(query, isLoadMore = false)
+            hideKeyboard()
+        }
+    }
 
-    private fun performSearch(query: String) {
-        showLoading("Aranıyor...")
-        searchResults.clear()
+    private fun loadNextPage() {
+        performSearch(SearchManager.currentQuery, isLoadMore = true)
+    }
+
+    private fun performSearch(query: String, isLoadMore: Boolean) {
+        SearchManager.isSearchLoading = true
+
+        if (!isLoadMore) {
+            showLoading("Aranıyor...")
+            SearchManager.searchResults.clear()
+            adapter.updateList(emptyList())
+
+            // Yeni aramada sayfalama durumunu sıfırla
+            SearchManager.nextPage = null
+            SearchManager.searchExtractor = null
+        } else {
+            requireActivity().runOnUiThread {
+                adapter.showLoadingFooter()
+            }
+        }
 
         Thread {
             try {
-                val py = Python.getInstance()
-                val results = py.getModule("script")
-                    .callAttr("youtube_ara", query)
-                    .asList()
+                val newItems = mutableListOf<MusicModel>()
 
-                for (item in results) {
-                    val parts = item.toString().split("|||")
-                    if (parts.size < 8) continue
+                if (!isLoadMore) {
+                    // 1. İLK ARAMA (First Page)
+                    // Sadece YouTube üzerinden arama yapacak şekilde motoru çağırıyoruz
+                    SearchManager.searchExtractor = ServiceList.YouTube.getSearchExtractor(query)
+                    SearchManager.searchExtractor?.fetchPage()
 
-                    val videoId = parts[5]
+                    val initialPage = SearchManager.searchExtractor?.initialPage
+                    val items = initialPage?.items ?: emptyList()
+                    SearchManager.nextPage = initialPage?.nextPage // Sonraki sayfanın biletini sakla
 
-                    val durationSec = durationToSeconds(parts[3])
+                    newItems.addAll(mapNewPipeItems(items))
+                } else {
+                    // 2. SONRAKİ SAYFALAR (Pagination / Infinite Scroll)
+                    if (SearchManager.nextPage != null && SearchManager.searchExtractor != null) {
+                        val pageResult = SearchManager.searchExtractor?.getPage(SearchManager.nextPage)
+                        val items = pageResult?.items ?: emptyList()
+                        SearchManager.nextPage = pageResult?.nextPage // Bir sonraki sayfanın biletini güncelle
 
-                    val audioMb = estimateSizeMb(durationSec, AUDIO_BITRATE_KBPS)
-                    val videoMb = estimateSizeMb(durationSec, VIDEO_BITRATE_KBPS)
-
-                    searchResults.add(
-                        MusicModel(
-                            title = parts[0],
-                            filePath = parts[1],
-                            albumArtPath = parts[2],
-                            durationText = parts[3],
-                            artist = parts[4],
-                            videoId = videoId,
-                            audioSizeMb = audioMb.toString(),
-                            videoSizeMb = videoMb.toString()
-                        )
-                    )
-
+                        newItems.addAll(mapNewPipeItems(items))
+                    }
                 }
 
                 requireActivity().runOnUiThread {
-                    hideLoading()
-                    if (searchResults.isEmpty()) {
-                        statusText.text = "Sonuç yok"
+                    SearchManager.isSearchLoading = false
+                    if (!isLoadMore) hideLoading()
+
+                    if (newItems.isEmpty()) {
+                        SearchManager.hasMoreResults = false
+                        adapter.hideFooter()
+                        if (!isLoadMore) statusText.text = "Sonuç yok"
                     } else {
-                        statusText.text = "${searchResults.size} sonuç bulundu"
-                        adapter.updateList(searchResults)
+                        SearchManager.searchResults.addAll(newItems)
+                        statusText.text = "${SearchManager.searchResults.size} sonuç bulundu"
+                        adapter.updateList(SearchManager.searchResults.toList())
+
+                        // Eğer YouTube "Daha fazla sonuç yok" dediyse (nextPage null ise)
+                        if (SearchManager.nextPage == null) {
+                            SearchManager.hasMoreResults = false
+                            adapter.hideFooter()
+                        }
                     }
                 }
 
             } catch (e: Exception) {
                 requireActivity().runOnUiThread {
-                    hideLoading()
-                    statusText.text = "Hata: ${e.message}"
+                    SearchManager.isSearchLoading = false
+                    if (!isLoadMore) {
+                        hideLoading()
+                        statusText.text = "Hata: ${e.message}"
+                    } else {
+                        adapter.showErrorFooter(e.message ?: "Bağlantı hatası")
+                    }
                 }
             }
         }.start()
     }
 
-    private fun triggerSearch() {
-        val query = searchInput.text.toString().trim()
-        if (query.isNotEmpty()) {
-            saveSearchQuery(query)
-            performSearch(query)
-            hideKeyboard()
+    // 🔥 YENİ: NewPipe verilerini MusicModel'e çeviren dönüştürücü
+    private fun mapNewPipeItems(items: List<InfoItem>): List<MusicModel> {
+        val result = mutableListOf<MusicModel>()
+
+        for (item in items) {
+            // Sadece videoları/şarkıları al (Kanal veya oynatma listesi sonuçlarını atla)
+            if (item is StreamInfoItem) {
+
+                val durationSec = item.duration.toInt()
+                if (durationSec <= 0) continue // Süresi olmayan canlı yayınları atla
+
+                // Süreyi MM:SS veya HH:MM:SS formatına çevir
+                val dk = durationSec / 60
+                val sn = durationSec % 60
+                val sureStr = if (durationSec >= 3600) {
+                    val sa = durationSec / 3600
+                    val kalanDk = (durationSec % 3600) / 60
+                    String.format("%d:%02d:%02d", sa, kalanDk, sn)
+                } else {
+                    String.format("%d:%02d", dk, sn)
+                }
+
+                val audioMb = estimateSizeMb(durationSec, AUDIO_BITRATE_KBPS).toString()
+
+                // YouTube ID'sini URL'den ayıkla
+                val videoId = item.url.replace("https://www.youtube.com/watch?v=", "")
+
+                // 🔥 HATA VEREN KISIM DÜZELTİLDİ
+                // Kapak resimlerinin olduğu listeden ilkini alıyoruz, liste boşsa boş string atıyoruz
+                val kapakUrl = item.thumbnails.lastOrNull()?.url ?: ""
+
+                result.add(
+                    MusicModel(
+                        title = item.name,
+                        filePath = item.url,
+                        albumArtPath = kapakUrl, // Artık hata vermeyecek
+                        durationText = sureStr,
+                        artist = item.uploaderName,
+                        videoId = videoId,
+                        audioSizeMb = audioMb,
+                        videoSizeMb = "0"
+                    )
+                )
+            }
         }
+        return result
     }
 
     private fun saveSearchQuery(query: String) {
         val prefs = requireContext().getSharedPreferences(PREF_SEARCH, Context.MODE_PRIVATE)
         val history = getSearchHistory().toMutableList()
 
-        history.remove(query)          // aynı varsa sil
-        history.add(0, query)           // başa ekle
+        history.remove(query)
+        history.add(0, query)
 
         if (history.size > MAX_HISTORY) {
             history.removeAt(history.lastIndex)
@@ -212,7 +331,6 @@ class HomeFragment : Fragment() {
         val history = getSearchHistory()
         if (history.isEmpty()) return
 
-        // Önce varsa eski popup'ı kapat
         historyPopup?.dismiss()
 
         val view = layoutInflater.inflate(R.layout.popup_search_history, null)
@@ -220,7 +338,6 @@ class HomeFragment : Fragment() {
 
         rv.layoutManager = LinearLayoutManager(requireContext())
         rv.adapter = SearchHistoryAdapter(history) { selected ->
-            // ❗ Tıklanınca SADECE input doldurulacak
             searchInput.setText(selected)
             searchInput.setSelection(selected.length)
             historyPopup?.dismiss()
@@ -230,36 +347,86 @@ class HomeFragment : Fragment() {
             view,
             searchInput.width,
             ViewGroup.LayoutParams.WRAP_CONTENT,
-            false // 🔥 focusable = FALSE (en önemli satır)
+            false
         ).apply {
             elevation = 12f
             isOutsideTouchable = true
             setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
 
             setOnDismissListener {
-                // 🔒 Focus EditText’te kalsın
                 searchInput.requestFocus()
             }
         }
 
-        // 🔒 Popup açılırken klavye SABİT kalsın
         searchInput.requestFocus()
         showKeyboard()
-
         historyPopup?.showAsDropDown(searchInput, 0, 8)
     }
 
+    // -----------------------------
+    // 🔥 İNDİRMEDEN DİNLEME (STREAMING - YTDLP)
+    // -----------------------------
+    /*private fun playStream(song: MusicModel) {
+        // HATA SEBEBİ: showLoading() kullanıldığında resultList tamamen gizleniyordu (Sayfa yenilenme hissi).
+        // ÇÖZÜM: Listeyi bozmadan sadece progress bar ve bir Toast mesajı gösteriyoruz.
+        requireActivity().runOnUiThread {
+            loadingBar.visibility = View.VISIBLE
+            Toast.makeText(requireContext(), "Bağlantı çözümleniyor...", Toast.LENGTH_SHORT).show()
+        }
+
+        Thread {
+            try {
+                // Chaquopy üzerinden Python scriptimize bağlanıyoruz
+                val py = Python.getInstance()
+                val script = py.getModule("script")
+
+                // Python'daki get_stream_url fonksiyonunu çağırıyoruz
+                val streamUrl = script.callAttr("get_stream_url", song.filePath).toString()
+
+                if (streamUrl.startsWith("Hata:")) {
+                    throw Exception(streamUrl)
+                }
+
+                requireActivity().runOnUiThread {
+                    loadingBar.visibility = View.GONE
+
+                    // Python'dan gelen saf yayın (stream) adresini geçici şarkımıza ekliyoruz
+                    val streamSong = song.copy(filePath = streamUrl)
+
+                    // Oynatma listesinin en başına ekleyip başlatıyoruz
+                    MusicManager.musicList.add(0, streamSong)
+                    MusicManager.playMusic(0)
+
+                    Toast.makeText(requireContext(), "🎵 Oynatılıyor: ${song.title}", Toast.LENGTH_SHORT).show()
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                requireActivity().runOnUiThread {
+                    loadingBar.visibility = View.GONE
+                    Toast.makeText(requireContext(), "Oynatma hatası: ${e.message}", Toast.LENGTH_LONG).show()
+                }
+            }
+        }.start()
+    }*/
+
+    // -----------------------------
+    // 🔥 YENİ: ZENGİN DETAYLAR VE VİDEO MENÜSÜ (BOTTOM SHEET)
+    // -----------------------------
+    private fun showRichInfo(song: MusicModel) {
+        // Şarkı bilgilerini ViewModel'e yükle (Aynı şarkıysa önbellekten çeker)
+        detailViewModel.loadDetailsIfNeeded(song)
+
+        // Yeni tasarladığımız BottomSheet'i ekranın altından yukarı doğru aç
+        val bottomSheet = MusicDetailBottomSheet()
+        bottomSheet.show(parentFragmentManager, "MusicDetailBottomSheet")
+    }
 
     private fun showInfo(song: MusicModel) {
         val audioMb = song.audioSizeMb ?: "?"
-        val videoMb = song.videoSizeMb ?: "?"
 
         AlertDialog.Builder(requireContext())
             .setTitle(song.title)
-            .setMessage(
-                "Ses (tahmini): ~$audioMb MB\n" +
-                        "Video (tahmini): ~$videoMb MB"
-            )
+            .setMessage("Dosya Boyutu (Tahmini): ~$audioMb MB")
             .setPositiveButton("Tamam", null)
             .show()
     }
@@ -275,41 +442,103 @@ class HomeFragment : Fragment() {
             try {
                 val py = Python.getInstance()
                 val script = py.getModule("script")
-
                 val tempDir = requireContext().externalCacheDir ?: requireContext().cacheDir
 
                 val progressCallback = PyObject.fromJava(
                     IntConsumer { percent ->
                         requireActivity().runOnUiThread {
-                            adapter.updateDownloadState(
-                                song.videoId,
-                                downloading = true,
-                                progress = percent
-                            )
+                            adapter.updateDownloadState(song.videoId, true, percent)
                         }
                     }
                 )
 
+                // 1. Python, sesi ham haliyle indirir (ffprobe/ffmpeg'e ihtiyaç duymaz)
                 val tempPath = script.callAttr(
                     "videoyu_indir",
                     song.filePath,
                     tempDir.absolutePath,
-                    "audio",
                     progressCallback
                 ).toString()
 
-                val finalFile = saveAudioToMediaStore(song, File(tempPath))
+                if (tempPath.startsWith("Hata:")) {
+                    throw Exception(tempPath)
+                }
 
+                // Başlık ve Sanatçı dosya ismi için temizlenir
+                val cleanTitle = song.title.cleanJunkId()
+                val (artist, title) = parseArtistTitle(cleanTitle, song.artist)
+                val cleanedSong = song.copy(title = title, artist = artist)
+
+                // 🔥 1.5: KAPAK FOTOĞRAFINI KOTLİN İLE İNDİR
+                val coverFile = File(tempDir, "cover_${System.currentTimeMillis()}.jpg")
+                try {
+                    // HATA VEREN KISIM DÜZELTİLDİ: isNotEmpty() yerine isNullOrEmpty() kullanıyoruz
+                    if (!song.albumArtPath.isNullOrEmpty()) {
+                        val url = java.net.URL(song.albumArtPath)
+                        val connection = url.openConnection() as java.net.HttpURLConnection
+                        connection.doInput = true
+                        connection.connect()
+                        val input = connection.inputStream
+
+                        // Android BitmapFactory, WebP gibi formatları otomatik okur
+                        val bitmap = android.graphics.BitmapFactory.decodeStream(input)
+                        if (bitmap != null) {
+                            val out = java.io.FileOutputStream(coverFile)
+                            // FFmpeg'in en sevdiği format olan JPEG'e çevirip kaydediyoruz
+                            bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 100, out)
+                            out.flush()
+                            out.close()
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.e("Cover_Download", "Kapak indirilemedi: ${e.message}")
+                }
+
+                // 2. FFmpeg-Kit ile Metadata ve Kapak Gömme İşlemi
+                val ffmpegOutFile = File(tempDir, "ff_${System.currentTimeMillis()}.m4a")
+
+                // FFmpeg Komutu: Resim başarıyla indirildiyse ikisini birleştir, aksi halde sadece text metadata ekle
+                val ffmpegCommand = if (coverFile.exists()) {
+                    "-i \"$tempPath\" -i \"${coverFile.absolutePath}\" " +
+                            "-map 0:a -map 1:v -c:a copy -c:v mjpeg -disposition:v attached_pic " +
+                            "-metadata title=\"$title\" -metadata artist=\"$artist\" " +
+                            "\"${ffmpegOutFile.absolutePath}\""
+                } else {
+                    "-i \"$tempPath\" -metadata title=\"$title\" -metadata artist=\"$artist\" -c:a copy \"${ffmpegOutFile.absolutePath}\""
+                }
+
+                Log.d("FFmpeg_Execution", "Komut çalıştırılıyor: $ffmpegCommand")
+
+                // İşlemi FFmpeg-Kit ile senkronize olarak çalıştırıyoruz
+                val session = FFmpegKit.execute(ffmpegCommand)
+                val returnCode = session.returnCode
+
+                val finalFile: File
+                if (ReturnCode.isSuccess(returnCode)) {
+                    Log.d("FFmpeg_Success", "Metadata ve kapak başarıyla gömüldü.")
+                    finalFile = saveAudioToMediaStore(cleanedSong, ffmpegOutFile)
+                    // Geçici dosyaları temizle (Kapak dosyasını da siliyoruz)
+                    try {
+                        File(tempPath).delete()
+                        ffmpegOutFile.delete()
+                        if (coverFile.exists()) coverFile.delete()
+                    } catch (_: Exception) {}
+                } else {
+                    Log.e("FFmpeg_Fail", "FFmpeg başarısız oldu: ${session.failStackTrace}")
+                    finalFile = saveAudioToMediaStore(cleanedSong, File(tempPath))
+                }
+
+                // 3. UI Güncelleme ve Veritabanı Kaydı
                 requireActivity().runOnUiThread {
                     adapter.updateDownloadState(song.videoId, false, 100)
 
                     MusicManager.addSongToDatabase(
-                        song
+                        cleanedSong
                             .copy(filePath = finalFile.toString())
                             .copy(originalFileName = finalFile.name)
                     )
 
-                    Toast.makeText(requireContext(), "✅ İndirildi", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(requireContext(), "✅ Şarkı İndirildi", Toast.LENGTH_SHORT).show()
                 }
 
             } catch (e: Exception) {
@@ -321,93 +550,54 @@ class HomeFragment : Fragment() {
         }.start()
     }
 
+    private fun parseArtistTitle(cleanName: String, originalArtist: String): Pair<String, String> {
+        val ARTIST_TITLE_REGEX = Regex("\\s*(?:-|—|–|\\||｜)\\s*")
+        val parts = cleanName.split(ARTIST_TITLE_REGEX).map { it.trim() }
+
+        if (parts.size >= 3 && parts[0].equals(parts[1], true)) {
+            return parts[0] to parts.subList(2, parts.size).joinToString(" - ")
+        }
+        if (parts.size >= 2) {
+            val artist = parts[0]
+            if (artist.length in 2..40) {
+                return artist to parts.subList(1, parts.size).joinToString(" - ")
+            }
+        }
+        return originalArtist to cleanName
+    }
 
     private fun handleAudioDownload(song: MusicModel) {
         val locals = MusicManager.musicList
-        // -------------------------------------------------
-        // 1️⃣ GERÇEK videoId eşleşmesi → KESİN ENGEL
-        // -------------------------------------------------
         if (
-            (
-                song.videoId.isNotEmpty() &&
-                !song.videoId.startsWith("local_") &&
-                locals.any { it.videoId == song.videoId }
-            )
+            (song.videoId.isNotEmpty() &&
+                    !song.videoId.startsWith("local_") &&
+                    locals.any { it.videoId == song.videoId })
         ) {
-            Toast.makeText(
-                requireContext(),
-                "Bu şarkı zaten indirilmiş",
-                Toast.LENGTH_SHORT
-            ).show()
+            Toast.makeText(requireContext(), "Bu şarkı zaten indirilmiş", Toast.LENGTH_SHORT).show()
             return
         }
         downloadAudio(song)
     }
 
     private fun saveAudioToMediaStore(song: MusicModel, tempFile: File): File {
-        // 1. İsimleri Dosya Sistemi İçin Güvenli Hale Getir
         val safeTitle = song.title.sanitizeForFile()
         val safeArtist = song.artist.sanitizeForFile()
 
-        // Akıllı isimlendirme (Çift isim engelleme)
         var baseName = if (safeTitle.startsWith(safeArtist, ignoreCase = true)) {
             safeTitle
         } else {
             "$safeArtist - $safeTitle"
         }
 
-        /*// -------------------------------------------------------------
-        // 🖼️ KAPAK RESMİNİ BUL VE GİZLİ KLASÖRE TAŞI
-        // -------------------------------------------------------------
-        // Python temp klasörüne "Baslik.jpg" veya "Baslik.webp" diye indirdi.
-        // Ses dosyasıyla (tempFile) aynı isimdedir.
-        val tempDir = tempFile.parentFile
-        val rawNameWithoutExt = tempFile.nameWithoutExtension // Python'un verdiği ham isim
-
-        // Olası uzantıları tara (.jpg, .webp, .png)
-        val imageExtensions = listOf("jpg", "webp", "png")
-        var foundImage: File? = null
-
-        for (ext in imageExtensions) {
-            val imgCheck = File(tempDir, "$rawNameWithoutExt.$ext")
-            if (imgCheck.exists()) {
-                foundImage = imgCheck
-                break
-            }
-        }
-
-        if (foundImage != null) {
-            // Hedef: /data/user/0/com.example.../files/covers/Artist - Title.jpg
-            val internalCoversDir = File(requireContext().filesDir, "covers")
-            if (!internalCoversDir.exists()) internalCoversDir.mkdirs()
-
-            val uniqueCoverName =
-                "${baseName}_${song.videoId.hashCode()}.jpg"
-
-            val finalCoverFile =
-                File(internalCoversDir, uniqueCoverName)
-
-            try {
-                foundImage.copyTo(finalCoverFile, overwrite = true)
-                foundImage.delete() // Temp'tekini sil
-            } catch (e: Exception) { e.printStackTrace() }
-        }
-        // -------------------------------------------------------------*/
-
-        // 2. Ses Dosyasını Taşı (Eski kodun aynısı)
         val musicDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MUSIC)
         if (!musicDir.exists()) musicDir.mkdirs()
 
-        val finalFileName = "$baseName.m4a" // Ses dosyası
+        val finalFileName = "$baseName.m4a"
         var finalFile = File(musicDir, finalFileName)
 
-        // Çakışma kontrolü
         if (finalFile.exists()) {
             if (!finalFile.delete()) {
                 val timestamp = System.currentTimeMillis() % 1000
-                // Çakışma varsa isim değişir, bu durumda kapak ismiyle eşleşmez ama
-                // en azından ses dosyası kurtulur.
-                // (Çok nadir bir senaryo, şimdilik göz ardı edilebilir)
                 finalFile = File(musicDir, "$baseName ($timestamp).m4a")
             }
         }
@@ -418,84 +608,14 @@ class HomeFragment : Fragment() {
         return finalFile
     }
 
-    /* -----------------------------
-     * ⬇️ VIDEO DOWNLOAD
-     * ----------------------------- */
-
-    private fun downloadVideo(song: MusicModel) {
-        Toast.makeText(requireContext(), "Video indiriliyor...", Toast.LENGTH_SHORT).show()
-
-        Thread {
-            try {
-                val py = Python.getInstance()
-                val script = py.getModule("script")
-
-                val cachePath =
-                    requireContext().externalCacheDir?.absolutePath
-                        ?: requireContext().cacheDir.absolutePath
-
-                val tempPath =
-                    script.callAttr("videoyu_indir", song.filePath, cachePath, "video")
-                        .toString()
-
-                saveVideo(File(tempPath))
-
-                requireActivity().runOnUiThread {
-                    Toast.makeText(
-                        requireContext(),
-                        "✅ Video kaydedildi",
-                        Toast.LENGTH_LONG
-                    ).show()
-                }
-
-            } catch (e: Exception) {
-                requireActivity().runOnUiThread {
-                    Toast.makeText(requireContext(), e.message, Toast.LENGTH_LONG).show()
-                }
-            }
-        }.start()
-    }
-
-    private fun saveVideo(tempFile: File): Uri? {
-        val resolver = requireContext().contentResolver
-
-        val uri = resolver.insert(
-            MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
-            ContentValues().apply {
-                put(MediaStore.Video.Media.DISPLAY_NAME, tempFile.name)
-                put(MediaStore.Video.Media.MIME_TYPE, "video/mp4")
-                put(
-                    MediaStore.Video.Media.RELATIVE_PATH,
-                    Environment.DIRECTORY_MOVIES + "/Rhythmic/"
-                )
-            }
-        )
-
-        uri?.let {
-            FileInputStream(tempFile).use { input ->
-                resolver.openOutputStream(it)?.use { output ->
-                    input.copyTo(output)
-                }
-            }
-        }
-
-        tempFile.delete()
-        return uri
+    private fun String.cleanJunkId(): String {
+        val regex = Regex("\\s*\\(\\s*[A-Za-z0-9_\\-\\s]{9,16}\\s*\\)\\s*$")
+        return this.replace(regex, "").trim()
     }
 
     /* -----------------------------
      * HELPERS
      * ----------------------------- */
-
-    /*private fun updateDownloadState(
-        song: MusicModel,
-        isDownloading: Boolean = false,
-        progress: Int = 0
-    ) {
-        song.isDownloading = isDownloading
-        song.downloadProgressPercent = progress
-        adapter.notifyDataSetChanged()
-    }*/
 
     private fun showLoading(message: String) {
         loadingBar.visibility = View.VISIBLE
@@ -509,15 +629,12 @@ class HomeFragment : Fragment() {
     }
 
     private fun hideKeyboard() {
-        val imm =
-            requireActivity().getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+        val imm = requireActivity().getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
         imm.hideSoftInputFromWindow(view?.windowToken, 0)
     }
 
     private fun showKeyboard() {
-        val imm =
-            requireContext().getSystemService(Context.INPUT_METHOD_SERVICE)
-                    as InputMethodManager
+        val imm = requireContext().getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
         imm.showSoftInput(searchInput, InputMethodManager.SHOW_IMPLICIT)
     }
 
@@ -539,7 +656,6 @@ class HomeFragment : Fragment() {
         val mb = bytes / (1024 * 1024)
         return mb.toInt().coerceAtLeast(1)
     }
-
 }
 
 /* -----------------------------

@@ -11,11 +11,6 @@
         android:title="Müziklerim" />
 
     <item
-        android:id="@+id/nav_video"
-        android:icon="@android:drawable/ic_menu_camera"
-        android:title="Videolar" />
-
-    <item
         android:id="@+id/nav_settings"
         android:icon="@drawable/baseline_settings_24"
         android:title="Ayarlar" />

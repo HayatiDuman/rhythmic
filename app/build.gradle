@@ -54,6 +54,8 @@ chaquopy {
             // YERİNE BUNU YAZIYORUZ (Direkt GitHub'daki en son kodları indirir):
             install "https://github.com/yt-dlp/yt-dlp/archive/master.zip"
             install "requests"
+            install "httpx==0.27.2"
+            install "youtube-search-python==1.6.6"
         }
     }
 }
@@ -89,4 +91,20 @@ dependencies {
     implementation "androidx.room:room-runtime:$room_version"
     implementation "androidx.room:room-ktx:$room_version"
     kapt "androidx.room:room-compiler:$room_version"
+
+    // NewPipe Extractor (YouTube verilerini parçalayan motor)
+    implementation 'com.github.TeamNewPipe:NewPipeExtractor:v0.24.2'
+    // OkHttp (İnternet bağlantısını ve istekleri yönetecek motor)
+    implementation 'com.squareup.okhttp3:okhttp:4.12.0'
+    // FFmpeg-Kit Audio (Sadece ses işlemleri için hafifletilmiş paket)
+    // FFmpeg-Kit Audio (En stabil sürüm)
+    implementation 'io.github.maxrave-dev:ffmpeg-kit-audio:6.0.1'
+
+    // Resmi Android YouTube Player
+    implementation 'com.pierfrancescosoffritti.androidyoutubeplayer:core:13.0.0'
+
+    // ViewModel ve LiveData için (Eğer yoksa)
+    implementation 'androidx.lifecycle:lifecycle-viewmodel-ktx:2.6.2'
+    implementation "androidx.lifecycle:lifecycle-livedata-ktx:2.6.2"
+    implementation 'androidx.fragment:fragment-ktx:1.6.2'
 }

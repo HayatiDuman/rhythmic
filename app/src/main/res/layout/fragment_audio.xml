@@ -4,7 +4,7 @@
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#F5F5F5"
+    android:background="?android:attr/windowBackground"
     android:padding="16dp">
 
     <LinearLayout
@@ -23,7 +23,7 @@
             android:text="Müziklerim"
             android:textSize="24sp"
             android:textStyle="bold"
-            android:textColor="#212121"/>
+            android:textColor="?android:attr/textColorPrimary"/>
 
         <LinearLayout
             android:id="@+id/searchLayout"
@@ -40,6 +40,8 @@
                 android:layout_height="40dp"
                 android:background="@drawable/fast_scroll_track"
                 android:hint="Şarkı ara..."
+                android:textColor="?android:attr/textColorPrimary"
+                android:textColorHint="?android:attr/textColorHint"
                 android:paddingStart="12dp"
                 android:paddingEnd="12dp"
                 android:textSize="14sp"
@@ -58,7 +60,7 @@
                 android:layout_width="32dp"
                 android:layout_height="32dp"
                 android:src="@android:drawable/ic_menu_search"
-                app:tint="#6200EE"
+                app:tint="?attr/colorPrimary"
                 android:background="?attr/selectableItemBackgroundBorderless"
                 android:clickable="true"
                 android:focusable="true"
@@ -69,7 +71,7 @@
                 android:layout_width="32dp"
                 android:layout_height="32dp"
                 android:src="@android:drawable/ic_menu_close_clear_cancel"
-                app:tint="#6200EE"
+                app:tint="?attr/colorPrimary"
                 android:background="?attr/selectableItemBackgroundBorderless"
                 android:clickable="true"
                 android:focusable="true"
@@ -81,7 +83,7 @@
                 android:layout_width="32dp"
                 android:layout_height="32dp"
                 android:src="@android:drawable/ic_menu_sort_by_size"
-                app:tint="#6200EE"
+                app:tint="?attr/colorPrimary"
                 android:background="?attr/selectableItemBackgroundBorderless"
                 android:clickable="true"
                 android:focusable="true" />
@@ -94,7 +96,7 @@
         android:layout_height="wrap_content"
         android:text="Yükleniyor..."
         android:textSize="12sp"
-        android:textColor="#757575"
+        android:textColor="?android:attr/textColorSecondary"
         android:layout_marginTop="4dp"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toBottomOf="@id/topBar"/>
@@ -104,14 +106,34 @@
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_marginTop="12dp"
-        app:fastScrollEnabled="true"
-        app:fastScrollHorizontalThumbDrawable="@drawable/fast_scroll_thumb"
-        app:fastScrollHorizontalTrackDrawable="@drawable/fast_scroll_track"
-        app:fastScrollVerticalThumbDrawable="@drawable/fast_scroll_thumb"
-        app:fastScrollVerticalTrackDrawable="@drawable/fast_scroll_track"
+
+        android:scrollbarTrackVertical="@android:color/transparent"
+        android:scrollbarThumbVertical="?attr/colorSecondary"
+        android:scrollbars="vertical"
+        android:fastScrollEnabled="true"
+
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintTop_toBottomOf="@id/tvListStatus"
         tools:listitem="@layout/item_local_music" />
+
+    <FrameLayout
+        android:id="@+id/scrollbarOverlay"
+        android:layout_width="12dp"
+        android:layout_height="0dp"
+        android:layout_marginTop="12dp"
+        android:layout_marginEnd="-6dp"
+        app:layout_constraintEnd_toEndOf="@id/rvLocalMusic"
+        app:layout_constraintTop_toTopOf="@id/rvLocalMusic"
+        app:layout_constraintBottom_toBottomOf="@id/rvLocalMusic">
+
+        <View
+            android:id="@+id/indicatorDot"
+            android:layout_width="10dp"
+            android:layout_height="10dp"
+            android:background="@drawable/indicator_dot"
+            android:backgroundTint="?attr/colorPrimary"
+            android:alpha="0" />
+    </FrameLayout>
 
     <TextView
         android:id="@+id/tvNoResult"
@@ -120,9 +142,10 @@
         android:text="Sonuç Bulunamadı"
         android:textSize="18sp"
         android:textStyle="bold"
-        android:textColor="#9E9E9E"
+        android:textColor="?android:attr/textColorHint"
         android:visibility="gone"
         app:drawableTopCompat="@android:drawable/ic_menu_search"
+        app:drawableTint="?android:attr/textColorHint"
         android:drawablePadding="8dp"
         android:gravity="center"
         app:layout_constraintStart_toStartOf="parent"

@@ -48,12 +48,23 @@ class LocalMusicAdapter(
 
     private fun bindPlayingState(holder: MusicViewHolder, song: MusicModel) {
         val isPlaying = song.filePath == currentPlayingFilePath
+        val context = holder.itemView.context
 
-        holder.titleText.setTextColor(
-            if (isPlaying) Color.parseColor("#6200EE") else Color.BLACK
-        )
-        holder.playingIndicator.visibility =
-            if (isPlaying) View.VISIBLE else View.GONE
+        // Temamızdaki renkleri çalışma anında (runtime) dinamik olarak çekiyoruz
+        val typedValue = android.util.TypedValue()
+        val theme = context.theme
+
+        if (isPlaying) {
+            // 1. Şarkı çalıyorsa: Yeni aksan rengimiz olan Bebek Mavisini (?attr/colorSecondary) ver
+            theme.resolveAttribute(com.google.android.material.R.attr.colorSecondary, typedValue, true)
+            holder.titleText.setTextColor(typedValue.data)
+            holder.playingIndicator.visibility = View.VISIBLE
+        } else {
+            // 2. Şarkı çalmıyorsa: Evrensel ana yazı rengini (?android:attr/textColorPrimary) ver
+            theme.resolveAttribute(android.R.attr.textColorPrimary, typedValue, true)
+            holder.titleText.setTextColor(typedValue.data)
+            holder.playingIndicator.visibility = View.GONE
+        }
     }
 
     private fun bindTexts(holder: MusicViewHolder, song: MusicModel) {

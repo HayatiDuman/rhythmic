@@ -1,9 +1,71 @@
 <resources xmlns:tools="http://schemas.android.com/tools">
-    <style name="Base.Theme.Rhythmic" parent="Theme.AppCompat.Light.NoActionBar">
-        <item name="colorPrimary">#000000</item>
-        <item name="colorPrimaryDark">#000000</item>
-        <item name="colorAccent">#03DAC5</item>
+
+    <style name="Theme.Rhythmic.Light" parent="Theme.MaterialComponents.Light.NoActionBar">
+        <item name="android:statusBarColor">@color/light_bg_main</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:navigationBarColor">@color/light_bg_main</item>
+        <item name="android:windowLightNavigationBar" tools:targetApi="o_mr1">true</item>
+
+        <item name="colorPrimary">@color/primary_bordo</item>
+        <item name="colorPrimaryVariant">@color/primary_bordo_dark</item>
+        <item name="colorOnPrimary">@color/light_bg_surface</item>
+
+        <item name="colorSecondary">@color/accent_baby_blue</item>
+        <item name="colorSecondaryVariant">@color/accent_blue_dark</item>
+        <item name="colorOnSecondary">@color/light_text_primary</item>
+
+        <item name="android:windowBackground">@color/light_bg_main</item>
+        <item name="android:colorBackground">@color/light_bg_main</item>
+        <item name="colorSurface">@color/light_bg_surface</item>
+        <item name="colorOnSurface">@color/light_text_primary</item>
+
+        <item name="android:textColorPrimary">@color/light_text_primary</item>
+        <item name="android:textColorSecondary">@color/light_text_secondary</item>
+        <item name="android:textColorHint">@color/light_text_secondary</item>
+
+        <item name="colorOutline">@color/outline_light</item>
+        <item name="colorError">@color/status_yellow</item>
+        <item name="colorControlHighlight">@color/outline_light</item>
+        <item name="colorControlNormal">@color/icon_tint_light</item>
     </style>
 
-    <style name="Theme.Rhythmic" parent="Base.Theme.Rhythmic" />
+    <style name="Theme.Rhythmic.Night" parent="Theme.MaterialComponents.NoActionBar">
+        <item name="android:statusBarColor">@color/dark_bg_main</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:navigationBarColor">@color/dark_bg_main</item>
+        <item name="android:windowLightNavigationBar" tools:targetApi="o_mr1">false</item>
+
+        <item name="colorPrimary">@color/primary_bordo_light</item>
+        <item name="colorPrimaryVariant">@color/primary_bordo</item>
+        <item name="colorOnPrimary">@color/dark_text_primary</item>
+
+        <item name="colorSecondary">@color/accent_baby_blue</item>
+        <item name="colorSecondaryVariant">@color/accent_blue_dark</item>
+        <item name="colorOnSecondary">@color/dark_bg_main</item>
+
+        <item name="android:windowBackground">@color/dark_bg_main</item>
+        <item name="android:colorBackground">@color/dark_bg_main</item>
+        <item name="colorSurface">@color/dark_bg_surface</item>
+        <item name="colorOnSurface">@color/dark_text_primary</item>
+
+        <item name="android:textColorPrimary">@color/dark_text_primary</item>
+        <item name="android:textColorSecondary">@color/dark_text_secondary</item>
+        <item name="android:textColorHint">@color/dark_text_secondary</item>
+
+        <item name="colorOutline">@color/outline_dark</item>
+        <item name="colorError">@color/status_yellow</item>
+        <item name="colorControlHighlight">@color/outline_dark</item>
+        <item name="colorControlNormal">@color/icon_tint_dark</item>
+    </style>
+
+    <style name="Theme.Rhythmic.Black" parent="Theme.Rhythmic.Night">
+        <item name="android:statusBarColor">@color/black_bg_main</item>
+        <item name="android:navigationBarColor">@color/black_bg_main</item>
+        <item name="android:windowLightNavigationBar" tools:targetApi="o_mr1">false</item>
+        <item name="android:windowBackground">@color/black_bg_main</item>
+        <item name="android:colorBackground">@color/black_bg_main</item>
+        <item name="colorSurface">@color/black_bg_surface</item>
+    </style>
+
+    <style name="Theme.Rhythmic" parent="Theme.Rhythmic.Light" />
 </resources>
