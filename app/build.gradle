@@ -54,9 +54,7 @@ chaquopy {
         version "3.10" // Kullanmak istediğin Python sürümü
         //pip ile kütüphane kurmak istersen burayı kullanacaksın:
         pip {
-            // install "yt-dlp"  <-- BUNU SİLİYORUZ.
-
-            // YERİNE BUNU YAZIYORUZ (Direkt GitHub'daki en son kodları indirir):
+            // (Direkt GitHub'daki en son kodları indirir):
             install "https://github.com/yt-dlp/yt-dlp/archive/master.zip"
             install "requests"
             install "httpx==0.27.2"
