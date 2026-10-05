@@ -10,5 +10,8 @@ data class MusicModel(
     val dateAdded: Long = System.currentTimeMillis(),
     val albumArtPath: String? = null,
     val audioSizeMb: String? = null,
-    val videoSizeMb: String? = null
+    val videoSizeMb: String? = null,
+
+    // 🔥 ÇOKLU SEÇİM İÇİN EKLENEN DURUM BAYRAĞI
+    var isSelected: Boolean = false
 )

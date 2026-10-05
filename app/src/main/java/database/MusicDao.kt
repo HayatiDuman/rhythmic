@@ -52,4 +52,36 @@ interface MusicDao {
 
     @Query("SELECT * FROM musics ORDER BY dateAdded DESC")
     fun getAll(): List<MusicEntity>
+
+    // --- OYNATMA LİSTESİ OPERASYONLARI ---
+
+    @androidx.room.Insert(onConflict = androidx.room.OnConflictStrategy.REPLACE)
+    fun insertPlaylist(playlist: PlaylistEntity): Long
+
+    @androidx.room.Query("SELECT * FROM playlists ORDER BY dateCreated DESC")
+    fun getAllPlaylists(): List<PlaylistEntity>
+
+    @androidx.room.Query("DELETE FROM playlists WHERE playlistId = :playlistId")
+    fun deletePlaylistById(playlistId: Long)
+
+    // --- KÖPRÜ / İLİŞKİ OPERASYONLARI ---
+
+    @androidx.room.Insert(onConflict = androidx.room.OnConflictStrategy.IGNORE)
+    fun insertMusicToPlaylist(crossRef: PlaylistMusicCrossRef)
+
+    @androidx.room.Query("DELETE FROM playlist_music_cross_ref WHERE playlistId = :playlistId AND videoId = :videoId")
+    fun removeMusicFromPlaylist(playlistId: Long, videoId: String)
+
+    // Bir oynatma listesine ait tüm şarkıları getiren sihirli sorgu
+    @androidx.room.Query("""
+        SELECT musics.* FROM musics 
+        INNER JOIN playlist_music_cross_ref ON musics.videoId = playlist_music_cross_ref.videoId 
+        WHERE playlist_music_cross_ref.playlistId = :playlistId
+        ORDER BY musics.dateAdded DESC
+    """)
+    fun getMusicFromPlaylist(playlistId: Long): List<MusicEntity>
+
+    // Bir şarkı silindiğinde oynatma listelerindeki tüm referanslarını otomatik temizle
+    @androidx.room.Query("DELETE FROM playlist_music_cross_ref WHERE videoId = :videoId")
+    fun deleteMusicReferences(videoId: String)
 }

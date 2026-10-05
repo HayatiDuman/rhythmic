@@ -48,7 +48,7 @@ class SongDetailViewModel : ViewModel() {
                     viewCount = parts.getOrNull(0) ?: "Bilinmiyor",
                     uploadDate = parts.getOrNull(1) ?: "Bilinmiyor",
                     likeCount = parts.getOrNull(2) ?: "Bilinmiyor",
-                    exactVideoId = parts.getOrNull(4) ?: "",
+                    exactVideoId = parts.getOrNull(3) ?: "",
                     channelName = song.artist // Şarkının sanatçı adını kanal olarak alıyoruz
                 )
 

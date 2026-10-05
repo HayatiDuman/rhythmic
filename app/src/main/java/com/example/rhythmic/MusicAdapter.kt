@@ -11,7 +11,8 @@ import com.bumptech.glide.Glide
 class MusicAdapter(
     private var musicList: List<MusicModel>,
     private val onActionClick: (MusicModel, String) -> Unit,
-    private val onRetryClick: () -> Unit // Yeni eklendi
+    private val onRetryClick: () -> Unit,
+    private val downloadCancelFlags: Map<String, Boolean>
 ) : RecyclerView.Adapter<RecyclerView.ViewHolder>() { // Genel ViewHolder'a geçirildi
 
     // -----------------------------
@@ -136,19 +137,50 @@ class MusicAdapter(
             val state = downloadStates[song.videoId]
 
             when {
+                // ⏳ A DURUMU: ŞARKI ŞU AN İNDİRİLİYOR
                 state?.isDownloading == true -> {
                     showProgress(holder, state.progress)
-                    setButtonsEnabled(holder, false)
+
+                    val isCancelling = (downloadCancelFlags[song.videoId] == true)
+
+                    // 🎯 Buton aktif kalmalı ki kullanıcı basıp iptal edebilsin!
+                    holder.btnSes.isEnabled = !isCancelling
+                    holder.btnSes.alpha = if (isCancelling) 0.5f else 1f // Görsel bir "pasif" etkisi ver
+
+                    // Buton simgesini "İptal (X)" veya "..." işareti olarak güncelle
+                    holder.imgSesIkon.setImageResource(if (isCancelling) R.drawable.baseline_hourglass_bottom_24 else R.drawable.baseline_cancel_24)
+
+                    // Rengi kırmızı (veya işlem devam ediyorsa farklı) yap
+                    holder.imgSesIkon.imageTintList = android.content.res.ColorStateList.valueOf(android.graphics.Color.RED)
                 }
 
+                // ✅ B DURUMU: ŞARKI ZATEN İNDİRİLMİŞ
                 MusicManager.isDownloaded(song.videoId) -> {
                     hideProgress(holder)
-                    setButtonsEnabled(holder, false)
+
+                    // 🎯 Şarkı indiği için butona tıklanmasını tamamen engelliyoruz
+                    holder.btnSes.isEnabled = false
+                    holder.btnSes.alpha = 1f // Rengi soluk olmasın, capcanlı kalsın
+
+                    // Simgeyi sistemin resmi onay/tik işaretine çeviriyoruz
+                    holder.imgSesIkon.setImageResource(R.drawable.baseline_check_circle_outline_24)
+                    // Onay işaretini yeşil renk yapıyoruz
+                    holder.imgSesIkon.imageTintList = android.content.res.ColorStateList.valueOf(android.graphics.Color.parseColor("#4CAF50"))
                 }
 
+                // 📥 C DURUMU: ŞARKI HENÜZ İNDİRİLMEMİŞ (VARSAYILAN MOD)
                 else -> {
                     hideProgress(holder)
-                    setButtonsEnabled(holder, true)
+                    holder.btnSes.isEnabled = true
+                    holder.btnSes.alpha = 1f
+
+                    // Orijinal indirme simgesini (Aşağı yönlü ok) geri yüklüyoruz
+                    holder.imgSesIkon.setImageResource(R.drawable.baseline_arrow_circle_down_24)
+
+                    // Rengini uygulamanın temasına göre (colorSecondary) orijinal haline getiriyoruz
+                    val typedValue = android.util.TypedValue()
+                    holder.itemView.context.theme.resolveAttribute(android.R.attr.colorSecondary, typedValue, true)
+                    holder.imgSesIkon.imageTintList = android.content.res.ColorStateList.valueOf(typedValue.data)
                 }
             }
 
@@ -180,6 +212,7 @@ class MusicAdapter(
         val btnSes: LinearLayout = itemView.findViewById(R.id.btnSesIndir)
         val btnInfo: LinearLayout = itemView.findViewById(R.id.btnInfo)
         //val btnListen: LinearLayout = itemView.findViewById(R.id.btnListenAudio)
+        val imgSesIkon: ImageView = btnSes.getChildAt(0) as ImageView
 
         val progressLayout: LinearLayout = itemView.findViewById(R.id.layoutDownloadProgress)
         val progressBar: ProgressBar = itemView.findViewById(R.id.progressBar)

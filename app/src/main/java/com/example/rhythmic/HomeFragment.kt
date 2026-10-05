@@ -36,6 +36,7 @@ private val PREF_SEARCH = "search_history"
 private val KEY_HISTORY = "history"
 private const val MAX_HISTORY = 5
 
+
 class HomeFragment : Fragment() {
     // Hafızayı tutan ortak ViewModel
     private val detailViewModel: SongDetailViewModel by activityViewModels()
@@ -48,6 +49,12 @@ class HomeFragment : Fragment() {
     private lateinit var resultList: RecyclerView
 
     private var historyPopup: PopupWindow? = null
+    private val suggestionHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private var suggestionRunnable: Runnable? = null
+    private var suggestionAdapter: SearchHistoryAdapter? = null
+    private var isSelectingSuggestion = false // 🎯 Öneriye tıklandığında TextWatcher'ı susturan bayrak
+    private val downloadCancelFlags = mutableMapOf<String, Boolean>()
+    private val activeDownloadThreads = mutableMapOf<String, Thread>()
 
     /* --- Data --- */
     private lateinit var adapter: MusicAdapter
@@ -66,6 +73,8 @@ class HomeFragment : Fragment() {
         setupAdapter()
         setupListeners()
 
+        requireActivity().window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_PAN)
+
         // Arama kutusunu geri doldur ve imleci sona al
         if (SearchManager.currentQuery.isNotEmpty()) {
             searchInput.setText(SearchManager.currentQuery)
@@ -79,6 +88,13 @@ class HomeFragment : Fragment() {
         } else if (SearchManager.isSearchLoading) {
             showLoading("Aranıyor...")
         }
+    }
+
+    override fun onDestroyView() {
+        suggestionRunnable?.let { suggestionHandler.removeCallbacks(it) }
+        historyPopup?.dismiss()
+        historyPopup = null
+        super.onDestroyView()
     }
 
     /* -----------------------------
@@ -125,7 +141,8 @@ class HomeFragment : Fragment() {
             onRetryClick = {
                 adapter.showLoadingFooter()
                 performSearch(SearchManager.currentQuery, isLoadMore = true)
-            }
+            },
+            downloadCancelFlags = downloadCancelFlags
         )
         resultList.adapter = adapter
     }
@@ -158,6 +175,51 @@ class HomeFragment : Fragment() {
         searchInput.setOnClickListener {
             showSearchHistory()
         }
+
+        // setupListeners() içine ekle:
+        // setupListeners() içindeki TextWatcher:
+        searchInput.addTextChangedListener(object : android.text.TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+                // Eğer kullanıcı bir öneriye tıklayıp kutuyu doldurduysa arama önerisi çalıştırma
+                if (isSelectingSuggestion) {
+                    return
+                }
+
+                val query = s?.toString()?.trim().orEmpty()
+
+                suggestionRunnable?.let { suggestionHandler.removeCallbacks(it) }
+
+                if (query.length >= 2) {
+                    suggestionRunnable = Runnable {
+                        fetchSuggestions(query)
+                    }
+                    suggestionHandler.postDelayed(suggestionRunnable!!, 300)
+                } else if (query.isEmpty() && searchInput.hasFocus()) {
+                    showSearchHistory()
+                } else {
+                    dismissPopup()
+                }
+            }
+            override fun afterTextChanged(s: android.text.Editable?) {}
+        })
+
+        // 🎯 ÇÖZÜM: Şarkı listesine (RecyclerView) dokunulduğunda veya kaydırıldığında klavyeyi kapat
+        resultList.setOnTouchListener { _, event ->
+            if (event.action == MotionEvent.ACTION_DOWN) {
+                if (searchInput.hasFocus()) {
+                    hideKeyboard()
+                }
+            }
+            false
+        }
+
+        // 🎯 ÇÖZÜM: Fragment'ın ana arka planına dokunulduğunda klavyeyi kapat
+        view?.setOnClickListener {
+            if (searchInput.hasFocus()) {
+                hideKeyboard()
+            }
+        }
     }
 
     /* -----------------------------
@@ -178,6 +240,26 @@ class HomeFragment : Fragment() {
         performSearch(SearchManager.currentQuery, isLoadMore = true)
     }
 
+    private fun getAvailableHeightAboveKeyboard(): Int {
+        val view = view ?: return dpToPx(220)
+
+        // 1. Ekranın görünür alanını (klavye hariç kalan pencereyi) al
+        val visibleFrame = android.graphics.Rect()
+        view.getWindowVisibleDisplayFrame(visibleFrame)
+        val keyboardTop = visibleFrame.bottom
+
+        // 2. Arama kutusunun ekrandaki alt koordinatını bul
+        val location = IntArray(2)
+        searchInput.getLocationOnScreen(location)
+        val searchInputBottom = location[1] + searchInput.height
+
+        // 3. İkisi arasındaki kullanılabilir dikey boşluk (biraz margin bırakarak)
+        val availableHeight = keyboardTop - searchInputBottom - dpToPx(12)
+
+        // Minimum 100dp, maksimum boşluk kadar olacak şekilde sınırla
+        return availableHeight.coerceAtLeast(dpToPx(100))
+    }
+
     private fun performSearch(query: String, isLoadMore: Boolean) {
         SearchManager.isSearchLoading = true
 
@@ -191,7 +273,10 @@ class HomeFragment : Fragment() {
             SearchManager.searchExtractor = null
         } else {
             requireActivity().runOnUiThread {
-                adapter.showLoadingFooter()
+                if (!isAdded || view == null) return@runOnUiThread
+                resultList.post {
+                    adapter.showLoadingFooter()
+                }
             }
         }
 
@@ -222,6 +307,7 @@ class HomeFragment : Fragment() {
                 }
 
                 requireActivity().runOnUiThread {
+                    if (!isAdded || view == null) return@runOnUiThread
                     SearchManager.isSearchLoading = false
                     if (!isLoadMore) hideLoading()
 
@@ -244,6 +330,7 @@ class HomeFragment : Fragment() {
 
             } catch (e: Exception) {
                 requireActivity().runOnUiThread {
+                    if (!isAdded || view == null) return@runOnUiThread
                     SearchManager.isSearchLoading = false
                     if (!isLoadMore) {
                         hideLoading()
@@ -254,6 +341,92 @@ class HomeFragment : Fragment() {
                 }
             }
         }.start()
+    }
+
+    /* -----------------------------
+ * 💡 AUTOCOMPLETE / SUGGESTIONS
+ * ----------------------------- */
+    private fun fetchSuggestions(query: String) {
+        Thread {
+            try {
+                val suggestionExtractor = ServiceList.YouTube.getSuggestionExtractor()
+                val suggestions: List<String> = suggestionExtractor.suggestionList(query)
+
+                requireActivity().runOnUiThread {
+                    if (!isAdded || view == null) return@runOnUiThread
+                    // Kullanıcı o sırada kutuyu temizlemediyse veya aramayı değiştirmediyse göster
+                    if (searchInput.text.toString().trim() == query && suggestions.isNotEmpty()) {
+                        showSuggestionsPopup(suggestions)
+                    } else if (suggestions.isEmpty()) {
+                        historyPopup?.dismiss()
+                    }
+                }
+            } catch (_: Exception) {
+                // Öneri alınamazsa popup'ı sessizce kapat
+                requireActivity().runOnUiThread {
+                    if (!isAdded || view == null) return@runOnUiThread
+                    historyPopup?.dismiss()
+                }
+            }
+        }.start()
+    }
+
+    private fun dismissPopup() {
+        suggestionRunnable?.let { suggestionHandler.removeCallbacks(it) }
+        historyPopup?.dismiss()
+        historyPopup = null
+        suggestionAdapter = null
+    }
+
+    private fun showSuggestionsPopup(suggestions: List<String>) {
+        // 🎯 Eğer popup zaten açıksa KESİNLİKLE KAPATMA! Sadece adaptörün içini güncelle
+        if (historyPopup?.isShowing == true && suggestionAdapter != null) {
+            suggestionAdapter?.updateItems(suggestions)
+            return
+        }
+
+        // İlk defa açılıyorsa popup'ı kur
+        val popupView = layoutInflater.inflate(R.layout.popup_search_history, null)
+        val rv = popupView.findViewById<RecyclerView>(R.id.rvHistory)
+
+        val maxAvailableHeight = getAvailableHeightAboveKeyboard()
+
+        rv.layoutParams = rv.layoutParams?.apply {
+            height = ViewGroup.LayoutParams.WRAP_CONTENT
+        }
+        rv.layoutManager = LinearLayoutManager(requireContext())
+
+        suggestionAdapter = SearchHistoryAdapter(suggestions, isSuggestion = true) { selected ->
+            isSelectingSuggestion = true // TextWatcher tetiklenmesini durdur
+            searchInput.setText(selected)
+            searchInput.setSelection(selected.length)
+            isSelectingSuggestion = false
+
+            dismissPopup()
+            triggerSearch()
+        }
+        rv.adapter = suggestionAdapter
+
+        historyPopup = PopupWindow(
+            popupView,
+            searchInput.width,
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+            false
+        ).apply {
+            elevation = 12f
+            isOutsideTouchable = true
+            inputMethodMode = PopupWindow.INPUT_METHOD_NEEDED
+            isClippingEnabled = true
+            height = maxAvailableHeight
+            setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+            setOnDismissListener {
+                suggestionAdapter = null
+            }
+        }
+
+        if (searchInput.isAttachedToWindow) {
+            historyPopup?.showAsDropDown(searchInput, 0, 8)
+        }
     }
 
     // 🔥 YENİ: NewPipe verilerini MusicModel'e çeviren dönüştürücü
@@ -327,20 +500,33 @@ class HomeFragment : Fragment() {
         return raw.split("|||")
     }
 
+    // Yardımcı dp çevirici
+    private fun dpToPx(dp: Int): Int {
+        return (dp * resources.displayMetrics.density).toInt()
+    }
+
     private fun showSearchHistory() {
         val history = getSearchHistory()
         if (history.isEmpty()) return
 
-        historyPopup?.dismiss()
+        dismissPopup()
 
         val view = layoutInflater.inflate(R.layout.popup_search_history, null)
         val rv = view.findViewById<RecyclerView>(R.id.rvHistory)
+        val maxAvailableHeight = getAvailableHeightAboveKeyboard()
 
+        rv.layoutParams = rv.layoutParams?.apply {
+            height = ViewGroup.LayoutParams.WRAP_CONTENT
+        }
         rv.layoutManager = LinearLayoutManager(requireContext())
-        rv.adapter = SearchHistoryAdapter(history) { selected ->
+        rv.adapter = SearchHistoryAdapter(history, isSuggestion = false) { selected ->
+            isSelectingSuggestion = true
             searchInput.setText(selected)
             searchInput.setSelection(selected.length)
-            historyPopup?.dismiss()
+            isSelectingSuggestion = false
+
+            dismissPopup()
+            triggerSearch()
         }
 
         historyPopup = PopupWindow(
@@ -351,66 +537,19 @@ class HomeFragment : Fragment() {
         ).apply {
             elevation = 12f
             isOutsideTouchable = true
+            inputMethodMode = PopupWindow.INPUT_METHOD_NEEDED
+            isClippingEnabled = true
+            height = maxAvailableHeight
             setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
-
-            setOnDismissListener {
-                searchInput.requestFocus()
-            }
         }
 
-        searchInput.requestFocus()
-        showKeyboard()
-        historyPopup?.showAsDropDown(searchInput, 0, 8)
+        if (searchInput.isAttachedToWindow) {
+            historyPopup?.showAsDropDown(searchInput, 0, 8)
+        }
     }
 
     // -----------------------------
     // 🔥 İNDİRMEDEN DİNLEME (STREAMING - YTDLP)
-    // -----------------------------
-    /*private fun playStream(song: MusicModel) {
-        // HATA SEBEBİ: showLoading() kullanıldığında resultList tamamen gizleniyordu (Sayfa yenilenme hissi).
-        // ÇÖZÜM: Listeyi bozmadan sadece progress bar ve bir Toast mesajı gösteriyoruz.
-        requireActivity().runOnUiThread {
-            loadingBar.visibility = View.VISIBLE
-            Toast.makeText(requireContext(), "Bağlantı çözümleniyor...", Toast.LENGTH_SHORT).show()
-        }
-
-        Thread {
-            try {
-                // Chaquopy üzerinden Python scriptimize bağlanıyoruz
-                val py = Python.getInstance()
-                val script = py.getModule("script")
-
-                // Python'daki get_stream_url fonksiyonunu çağırıyoruz
-                val streamUrl = script.callAttr("get_stream_url", song.filePath).toString()
-
-                if (streamUrl.startsWith("Hata:")) {
-                    throw Exception(streamUrl)
-                }
-
-                requireActivity().runOnUiThread {
-                    loadingBar.visibility = View.GONE
-
-                    // Python'dan gelen saf yayın (stream) adresini geçici şarkımıza ekliyoruz
-                    val streamSong = song.copy(filePath = streamUrl)
-
-                    // Oynatma listesinin en başına ekleyip başlatıyoruz
-                    MusicManager.musicList.add(0, streamSong)
-                    MusicManager.playMusic(0)
-
-                    Toast.makeText(requireContext(), "🎵 Oynatılıyor: ${song.title}", Toast.LENGTH_SHORT).show()
-                }
-            } catch (e: Exception) {
-                e.printStackTrace()
-                requireActivity().runOnUiThread {
-                    loadingBar.visibility = View.GONE
-                    Toast.makeText(requireContext(), "Oynatma hatası: ${e.message}", Toast.LENGTH_LONG).show()
-                }
-            }
-        }.start()
-    }*/
-
-    // -----------------------------
-    // 🔥 YENİ: ZENGİN DETAYLAR VE VİDEO MENÜSÜ (BOTTOM SHEET)
     // -----------------------------
     private fun showRichInfo(song: MusicModel) {
         // Şarkı bilgilerini ViewModel'e yükle (Aynı şarkıysa önbellekten çeker)
@@ -432,72 +571,99 @@ class HomeFragment : Fragment() {
     }
 
     /* -----------------------------
-     * ⬇️ AUDIO DOWNLOAD
+     * ⬇️ AUDIO DOWNLOAD & CANCEL MANAGEMENT
      * ----------------------------- */
+    private fun handleAudioDownload(song: MusicModel) {
+        if (MusicManager.isDownloaded(song.videoId)) return
+
+        // 🎯 KESİN ÇÖZÜM: Eğer haritada bu videoId ZATEN VARSA, şarkı şu an aktif olarak iniyordur.
+        // İkinci kez basıldıysa kullanıcı %100 iptal etmek istiyordur!
+        if (downloadCancelFlags.containsKey(song.videoId)) {
+            // Eğer zaten iptal sürecindeyse mükerrer basışları (çift thread) engellemek için doğrudan dön
+            if (downloadCancelFlags[song.videoId] == true) return
+
+            downloadCancelFlags[song.videoId] = true
+            Toast.makeText(requireContext(), "🛑 İndirme iptal ediliyor...", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        // Şarkı ilk kez inmeye başlıyor: Haritada kaydı oluştur ve kilitle!
+        downloadCancelFlags[song.videoId] = false
+        downloadAudio(song)
+    }
 
     private fun downloadAudio(song: MusicModel) {
         adapter.updateDownloadState(song.videoId, true, 0)
 
         Thread {
+            var tempPath: String? = null
+            val tempDir = requireContext().externalCacheDir ?: requireContext().cacheDir
+
             try {
                 val py = Python.getInstance()
                 val script = py.getModule("script")
-                val tempDir = requireContext().externalCacheDir ?: requireContext().cacheDir
 
                 val progressCallback = PyObject.fromJava(
                     IntConsumer { percent ->
+                        if (downloadCancelFlags[song.videoId] == true) {
+                            throw InterruptedException()
+                        }
+
                         requireActivity().runOnUiThread {
+                            if (!isAdded || view == null) return@runOnUiThread
                             adapter.updateDownloadState(song.videoId, true, percent)
                         }
                     }
                 )
 
-                // 1. Python, sesi ham haliyle indirir (ffprobe/ffmpeg'e ihtiyaç duymaz)
-                val tempPath = script.callAttr(
+                val cancelCallback = PyObject.fromJava(
+                    java.util.concurrent.Callable<Boolean> {
+                        return@Callable downloadCancelFlags[song.videoId] == true
+                    }
+                )
+
+                tempPath = script.callAttr(
                     "videoyu_indir",
                     song.filePath,
                     tempDir.absolutePath,
-                    progressCallback
+                    progressCallback,
+                    cancelCallback
                 ).toString()
+
+                if (tempPath == "CANCELLED" || downloadCancelFlags[song.videoId] == true) {
+                    throw InterruptedException()
+                }
 
                 if (tempPath.startsWith("Hata:")) {
                     throw Exception(tempPath)
                 }
 
-                // Başlık ve Sanatçı dosya ismi için temizlenir
+                requireActivity().runOnUiThread {
+                    if (!isAdded || view == null) return@runOnUiThread
+                    adapter.updateDownloadState(song.videoId, true, 100)
+                }
+
                 val cleanTitle = song.title.cleanJunkId()
                 val (artist, title) = parseArtistTitle(cleanTitle, song.artist)
                 val cleanedSong = song.copy(title = title, artist = artist)
 
-                // 🔥 1.5: KAPAK FOTOĞRAFINI KOTLİN İLE İNDİR
                 val coverFile = File(tempDir, "cover_${System.currentTimeMillis()}.jpg")
                 try {
-                    // HATA VEREN KISIM DÜZELTİLDİ: isNotEmpty() yerine isNullOrEmpty() kullanıyoruz
                     if (!song.albumArtPath.isNullOrEmpty()) {
                         val url = java.net.URL(song.albumArtPath)
                         val connection = url.openConnection() as java.net.HttpURLConnection
-                        connection.doInput = true
                         connection.connect()
-                        val input = connection.inputStream
-
-                        // Android BitmapFactory, WebP gibi formatları otomatik okur
-                        val bitmap = android.graphics.BitmapFactory.decodeStream(input)
+                        val bitmap = android.graphics.BitmapFactory.decodeStream(connection.inputStream)
                         if (bitmap != null) {
                             val out = java.io.FileOutputStream(coverFile)
-                            // FFmpeg'in en sevdiği format olan JPEG'e çevirip kaydediyoruz
                             bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 100, out)
                             out.flush()
                             out.close()
                         }
                     }
-                } catch (e: Exception) {
-                    Log.e("Cover_Download", "Kapak indirilemedi: ${e.message}")
-                }
+                } catch (_: Exception) {}
 
-                // 2. FFmpeg-Kit ile Metadata ve Kapak Gömme İşlemi
                 val ffmpegOutFile = File(tempDir, "ff_${System.currentTimeMillis()}.m4a")
-
-                // FFmpeg Komutu: Resim başarıyla indirildiyse ikisini birleştir, aksi halde sadece text metadata ekle
                 val ffmpegCommand = if (coverFile.exists()) {
                     "-i \"$tempPath\" -i \"${coverFile.absolutePath}\" " +
                             "-map 0:a -map 1:v -c:a copy -c:v mjpeg -disposition:v attached_pic " +
@@ -507,44 +673,49 @@ class HomeFragment : Fragment() {
                     "-i \"$tempPath\" -metadata title=\"$title\" -metadata artist=\"$artist\" -c:a copy \"${ffmpegOutFile.absolutePath}\""
                 }
 
-                Log.d("FFmpeg_Execution", "Komut çalıştırılıyor: $ffmpegCommand")
+                val session = com.arthenica.ffmpegkit.FFmpegKit.execute(ffmpegCommand)
 
-                // İşlemi FFmpeg-Kit ile senkronize olarak çalıştırıyoruz
-                val session = FFmpegKit.execute(ffmpegCommand)
-                val returnCode = session.returnCode
-
-                val finalFile: File
-                if (ReturnCode.isSuccess(returnCode)) {
-                    Log.d("FFmpeg_Success", "Metadata ve kapak başarıyla gömüldü.")
-                    finalFile = saveAudioToMediaStore(cleanedSong, ffmpegOutFile)
-                    // Geçici dosyaları temizle (Kapak dosyasını da siliyoruz)
-                    try {
-                        File(tempPath).delete()
-                        ffmpegOutFile.delete()
-                        if (coverFile.exists()) coverFile.delete()
-                    } catch (_: Exception) {}
+                val finalFile = if (com.arthenica.ffmpegkit.ReturnCode.isSuccess(session.returnCode)) {
+                    saveAudioToMediaStore(cleanedSong, ffmpegOutFile)
                 } else {
-                    Log.e("FFmpeg_Fail", "FFmpeg başarısız oldu: ${session.failStackTrace}")
-                    finalFile = saveAudioToMediaStore(cleanedSong, File(tempPath))
+                    saveAudioToMediaStore(cleanedSong, File(tempPath))
                 }
 
-                // 3. UI Güncelleme ve Veritabanı Kaydı
+                try {
+                    File(tempPath).delete()
+                    ffmpegOutFile.delete()
+                    if (coverFile.exists()) coverFile.delete()
+                } catch (_: Exception) {}
+
                 requireActivity().runOnUiThread {
+                    if (!isAdded || view == null) return@runOnUiThread
+                    // 🎯 BAŞARI TEMİZLİĞİ: Bayrağı kaldırarak butonun bir sonraki indirmeler için sıfırlanmasını sağla
+                    downloadCancelFlags.remove(song.videoId)
                     adapter.updateDownloadState(song.videoId, false, 100)
 
                     MusicManager.addSongToDatabase(
-                        cleanedSong
-                            .copy(filePath = finalFile.toString())
-                            .copy(originalFileName = finalFile.name)
+                        cleanedSong.copy(filePath = finalFile.toString(), originalFileName = finalFile.name)
                     )
-
                     Toast.makeText(requireContext(), "✅ Şarkı İndirildi", Toast.LENGTH_SHORT).show()
                 }
 
+            } catch (e: InterruptedException) {
+                try { tempPath?.let { File(it).delete() } } catch (_: Exception) {}
+
+                requireActivity().runOnUiThread {
+                    if (!isAdded || view == null) return@runOnUiThread
+                    // 🎯 İPTAL TEMİZLİĞİ: Bayrağı kaldırarak butonu taze haline geri döndür
+                    downloadCancelFlags.remove(song.videoId)
+                    adapter.updateDownloadState(song.videoId, false, 0)
+                    Toast.makeText(requireContext(), "İndirme İptal Edildi", Toast.LENGTH_SHORT).show()
+                }
             } catch (e: Exception) {
                 requireActivity().runOnUiThread {
+                    if (!isAdded || view == null) return@runOnUiThread
+                    // 🎯 HATA TEMİZLİĞİ: Bayrağı kaldırarak kullanıcının tekrar denemesine izin ver
+                    downloadCancelFlags.remove(song.videoId)
                     adapter.updateDownloadState(song.videoId, false, 0)
-                    Toast.makeText(requireContext(), e.message, Toast.LENGTH_LONG).show()
+                    Toast.makeText(requireContext(), "⚠️ Hata: ${e.message}", Toast.LENGTH_LONG).show()
                 }
             }
         }.start()
@@ -564,19 +735,6 @@ class HomeFragment : Fragment() {
             }
         }
         return originalArtist to cleanName
-    }
-
-    private fun handleAudioDownload(song: MusicModel) {
-        val locals = MusicManager.musicList
-        if (
-            (song.videoId.isNotEmpty() &&
-                    !song.videoId.startsWith("local_") &&
-                    locals.any { it.videoId == song.videoId })
-        ) {
-            Toast.makeText(requireContext(), "Bu şarkı zaten indirilmiş", Toast.LENGTH_SHORT).show()
-            return
-        }
-        downloadAudio(song)
     }
 
     private fun saveAudioToMediaStore(song: MusicModel, tempFile: File): File {
@@ -613,6 +771,13 @@ class HomeFragment : Fragment() {
         return this.replace(regex, "").trim()
     }
 
+    // 🎯 ÇÖZÜM 1: Kullanıcı başka bir sekmeye (Fragment) geçtiği an klavyeyi zorla kapatıyoruz
+    override fun onPause() {
+        super.onPause()
+        hideKeyboard()
+        historyPopup?.dismiss()
+    }
+
     /* -----------------------------
      * HELPERS
      * ----------------------------- */
@@ -628,9 +793,13 @@ class HomeFragment : Fragment() {
         resultList.visibility = View.VISIBLE
     }
 
+    // 🎯 ÇÖZÜM 2: Klavyeyi kapatırken arama inputunun odağını da temizliyoruz
     private fun hideKeyboard() {
         val imm = requireActivity().getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
-        imm.hideSoftInputFromWindow(view?.windowToken, 0)
+        searchInput.clearFocus() // İmleci ve odağı kaldır
+        view?.let {
+            imm.hideSoftInputFromWindow(it.windowToken, 0)
+        }
     }
 
     private fun showKeyboard() {

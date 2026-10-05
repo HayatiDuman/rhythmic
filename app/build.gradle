@@ -41,6 +41,11 @@ android {
         viewBinding true
         compose false
     }
+    packagingOptions {
+        jniLibs {
+            useLegacyPackaging true
+        }
+    }
 }
 
 // 3. PYTHON YAPILANDIRMASI (android bloğunun dışına, en alta olabilir)

@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:layout_marginEnd="8dp"
+    android:layout_marginVertical="4dp">
+
+    <!-- Normal Metin Kapsülü -->
+    <TextView
+        android:id="@+id/tvChipName"
+        android:layout_width="wrap_content"
+        android:layout_height="36dp"
+        android:background="@drawable/chip_background"
+        android:gravity="center"
+        android:paddingHorizontal="16dp"
+        android:textColor="?attr/colorOnSurface"
+        android:textStyle="bold"/>
+
+    <!-- 9 Noktalı Yönetim İkonu Kapsülü (Sadece en sonda görünür olacak) -->
+    <ImageView
+        android:id="@+id/imgChipManage"
+        android:layout_width="36dp"
+        android:layout_height="36dp"
+        android:background="@drawable/manage_chip_background"
+        android:padding="8dp"
+        android:src="@drawable/baseline_grid_view_24"
+        app:tint="?attr/colorOnPrimary"/>
+
+</FrameLayout>

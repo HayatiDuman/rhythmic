@@ -19,12 +19,21 @@ class LocalMusicAdapter(
     // Şu an çalan şarkının dosya yolu
     private var currentPlayingFilePath: String? = null
 
+    // 🔥 ÇOĞUL SEÇİM MODU DURUM TAKİBİ
+    private var isSelectionMode = false
+
+    // 🔥 Seçim modu durumunu dışarıya fısıldayan dinleyici (Fragment'taki sayacı besleyecek)
+    private var onSelectionChangedListener: (() -> Unit)? = null
+
     class MusicViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
-        /*val coverImage: ImageView = itemView.findViewById(R.id.imgLocalKapak)*/
         val playingIndicator: ImageView = itemView.findViewById(R.id.imgPlayingIndicator)
         val titleText: TextView = itemView.findViewById(R.id.tvLocalBaslik)
         val subtitleText: TextView = itemView.findViewById(R.id.tvLocalSure)
         val container: View = itemView
+
+        // 🔥 Not: Gelecek adımda eklenecek Checkbox'ı şimdiden buraya hazırlıyoruz.
+        // Hata vermemesi için dinamik süzme (findViewByIdOrNull mantığı) yapıyoruz.
+        val checkBox: android.widget.CheckBox? = itemView.findViewById(R.id.cbLocalSelect) ?: null
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): MusicViewHolder {
@@ -39,7 +48,11 @@ class LocalMusicAdapter(
         bindPlayingState(holder, song)
         bindTexts(holder, song)
         bindCoverImage(holder, song)
-        bindClicks(holder, song)
+
+        // 🔥 Yeni Eklenen Seçim Arayüzü Bağlayıcısı
+        bindSelectionState(holder, song)
+
+        bindClicks(holder, song, position)
     }
 
     override fun getItemCount(): Int = musicList.size
@@ -49,18 +62,15 @@ class LocalMusicAdapter(
     private fun bindPlayingState(holder: MusicViewHolder, song: MusicModel) {
         val isPlaying = song.filePath == currentPlayingFilePath
         val context = holder.itemView.context
-
-        // Temamızdaki renkleri çalışma anında (runtime) dinamik olarak çekiyoruz
         val typedValue = android.util.TypedValue()
         val theme = context.theme
 
         if (isPlaying) {
-            // 1. Şarkı çalıyorsa: Yeni aksan rengimiz olan Bebek Mavisini (?attr/colorSecondary) ver
             theme.resolveAttribute(com.google.android.material.R.attr.colorSecondary, typedValue, true)
             holder.titleText.setTextColor(typedValue.data)
-            holder.playingIndicator.visibility = View.VISIBLE
+            // 🔥 Eğer seçim modu aktifse çalma göstergesi gizlensin, Checkbox'a yer açılsın
+            holder.playingIndicator.visibility = if (isSelectionMode) View.GONE else View.VISIBLE
         } else {
-            // 2. Şarkı çalmıyorsa: Evrensel ana yazı rengini (?android:attr/textColorPrimary) ver
             theme.resolveAttribute(android.R.attr.textColorPrimary, typedValue, true)
             holder.titleText.setTextColor(typedValue.data)
             holder.playingIndicator.visibility = View.GONE
@@ -69,31 +79,19 @@ class LocalMusicAdapter(
 
     private fun bindTexts(holder: MusicViewHolder, song: MusicModel) {
         holder.titleText.text = song.title
-
         holder.subtitleText.text =
-            if (song.durationText.isNotEmpty())
-                "${song.artist} • ${song.durationText}"
-            else song.artist
+            if (song.durationText.isNotEmpty()) "${song.artist} • ${song.durationText}" else song.artist
     }
 
     private fun bindCoverImage(holder: MusicViewHolder, song: MusicModel) {
         val imageSource = resolveCoverImage(holder, song)
-
-        /*Glide.with(holder.itemView.context)
-            .load(imageSource ?: R.drawable.ic_music_placeholder)
-            .placeholder(R.drawable.ic_music_placeholder)
-            *//*.into(holder.coverImage)*/
     }
 
     private fun resolveCoverImage(holder: MusicViewHolder, song: MusicModel): Any? {
-        /*song.albumArtPath?.let { return File(it) }*/
-
         val fileName = File(song.filePath).nameWithoutExtension
         val coversDir = File(holder.itemView.context.filesDir, "covers")
-
         val webp = File(coversDir, "$fileName.webp")
         val jpg = File(coversDir, "$fileName.jpg")
-
         return when {
             webp.exists() -> webp
             jpg.exists() -> jpg
@@ -101,18 +99,92 @@ class LocalMusicAdapter(
         }
     }
 
-    private fun bindClicks(holder: MusicViewHolder, song: MusicModel) {
-        holder.container.setOnClickListener {
-            onSongClick(song.filePath)
-        }
+    // 🔥 YENİ: Checkbox ve Satır Boyama Görsel Yönetimi
+    private fun bindSelectionState(holder: MusicViewHolder, song: MusicModel) {
+        if (isSelectionMode) {
+            // Seçim modu açıksa Checkbox'ı göster ve şarkının durumuna göre işaretle
+            holder.checkBox?.visibility = View.VISIBLE
+            holder.checkBox?.isChecked = song.isSelected
 
-        holder.container.setOnLongClickListener {
-            onSongLongClick(song)
-            true
+            // Seçilen şarkıların arka planını hafif belirgin yap
+            if (song.isSelected) {
+                holder.container.setBackgroundColor(Color.parseColor("#1A7DD3FC")) // Bebek mavisinin %10 şeffaf hali
+            } else {
+                holder.container.setBackgroundResource(android.R.color.transparent)
+            }
+        } else {
+            // Seçim modu kapalıysa Checkbox gizlensin, arka plan temizlensin
+            holder.checkBox?.visibility = View.GONE
+            holder.container.setBackgroundResource(android.R.color.transparent)
         }
     }
 
-    /* --- Public API --- */
+    // 🔥 DEĞİŞTİ: Tıklama dinamikleri seçim moduna göre esnetildi
+    private fun bindClicks(holder: MusicViewHolder, song: MusicModel, position: Int) {
+        holder.container.setOnClickListener {
+            if (isSelectionMode) {
+                // Seçim modu aktifse satıra tıklanınca Checkbox durumunu tersine çevir
+                toggleSelection(position)
+            } else {
+                // Normal modda bildiğimiz çalma tetiğini çalıştır
+                onSongClick(song.filePath)
+            }
+        }
+
+        holder.container.setOnLongClickListener {
+            if (!isSelectionMode) {
+                // Eğer seçim modu kapalıyken uzun basılırsa, silmek yerine otomatik seçim modunu başlat
+                onSongLongClick(song)
+            }
+            true
+        }
+
+        // Doğrudan Checkbox kutusuna tıklanırsa
+        holder.checkBox?.setOnClickListener {
+            if (isSelectionMode) toggleSelection(position)
+        }
+    }
+
+    // 🔥 YENİ: Tek Bir Şarkının Seçim Durumunu Değiştirme Fonksiyonu
+    private fun toggleSelection(position: Int) {
+        if (position in musicList.indices) {
+            musicList[position].isSelected = !musicList[position].isSelected
+            notifyItemChanged(position)
+            onSelectionChangedListener?.invoke()
+        }
+    }
+
+    /* --- Public API (Fragment Tarafından Yönetilecek Alanlar) --- */
+
+    fun setOnSelectionChangedListener(listener: () -> Unit) {
+        this.onSelectionChangedListener = listener
+    }
+
+    // Seçim modunu açıp kapatan ana şalter
+    fun setSelectionMode(enabled: Boolean) {
+        if (this.isSelectionMode == enabled) return
+        this.isSelectionMode = enabled
+
+        // Mod kapatılırken seçilen tüm işaretleri RAM'de temizle
+        if (!enabled) {
+            musicList.forEach { it.isSelected = false }
+        }
+        notifyDataSetChanged()
+    }
+
+    fun getSelectionMode(): Boolean = isSelectionMode
+
+    // Seçilen tüm şarkıların listesini döndüren fonksiyon
+    fun getSelectedSongs(): List<MusicModel> {
+        return musicList.filter { it.isSelected }
+    }
+
+    // Üst bar için pratik "Hepsini Seç" motoru
+    fun selectAllSongs(select: Boolean) {
+        musicList.forEach { it.isSelected = select }
+        notifyDataSetChanged()
+        onSelectionChangedListener?.invoke()
+    }
 
     fun updateList(newList: List<MusicModel>) {
         musicList = newList

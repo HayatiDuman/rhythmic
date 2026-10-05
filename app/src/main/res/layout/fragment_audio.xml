@@ -7,10 +7,11 @@
     android:background="?android:attr/windowBackground"
     android:padding="16dp">
 
+    <!-- 🎯 1. YÜKSEKLİĞİ SABİTLENMİŞ ÜST BAR -->
     <LinearLayout
         android:id="@+id/topBar"
         android:layout_width="match_parent"
-        android:layout_height="50dp"
+        android:layout_height="48dp"
         android:orientation="horizontal"
         android:gravity="center_vertical"
         app:layout_constraintTop_toTopOf="parent">
@@ -20,11 +21,13 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="Müziklerim"
-            android:textSize="24sp"
+            android:text="Şarkılarım"
+            android:textSize="22sp"
             android:textStyle="bold"
-            android:textColor="?android:attr/textColorPrimary"/>
+            android:textColor="?android:attr/textColorPrimary"
+            android:gravity="center_vertical" />
 
+        <!-- Arama Alanı -->
         <LinearLayout
             android:id="@+id/searchLayout"
             android:layout_width="0dp"
@@ -33,63 +36,113 @@
             android:gravity="center_vertical"
             android:visibility="gone"
             android:orientation="horizontal">
-
             <EditText
                 android:id="@+id/etSearchLocal"
                 android:layout_width="match_parent"
-                android:layout_height="40dp"
+                android:layout_height="36dp"
                 android:background="@drawable/fast_scroll_track"
                 android:hint="Şarkı ara..."
                 android:textColor="?android:attr/textColorPrimary"
                 android:textColorHint="?android:attr/textColorHint"
-                android:paddingStart="12dp"
-                android:paddingEnd="12dp"
+                android:paddingHorizontal="12dp"
                 android:textSize="14sp"
                 android:singleLine="true"
                 android:imeOptions="actionSearch"/>
-
         </LinearLayout>
 
+        <!-- Kontrol Butonları -->
         <LinearLayout
             android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal">
+            android:layout_height="match_parent"
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
 
-            <ImageView
-                android:id="@+id/btnSearchOpen"
-                android:layout_width="32dp"
-                android:layout_height="32dp"
-                android:src="@android:drawable/ic_menu_search"
-                app:tint="?attr/colorPrimary"
+            <TextView
+                android:id="@+id/btnSelectAll"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Tümünü Seç"
+                android:textColor="?attr/colorSecondary"
+                android:textSize="14sp"
+                android:textStyle="bold"
+                android:padding="8dp"
+                android:visibility="gone"
                 android:background="?attr/selectableItemBackgroundBorderless"
                 android:clickable="true"
                 android:focusable="true"
+                android:layout_marginEnd="4dp"/>
+
+            <ImageView
+                android:id="@+id/btnSearchOpen"
+                android:layout_width="28dp"
+                android:layout_height="28dp"
+                android:src="@android:drawable/ic_menu_search"
+                app:tint="?attr/colorPrimary"
+                android:background="?attr/selectableItemBackgroundBorderless"
                 android:layout_marginEnd="8dp"/>
 
             <ImageView
                 android:id="@+id/btnSearchClose"
-                android:layout_width="32dp"
-                android:layout_height="32dp"
+                android:layout_width="28dp"
+                android:layout_height="28dp"
                 android:src="@android:drawable/ic_menu_close_clear_cancel"
                 app:tint="?attr/colorPrimary"
                 android:background="?attr/selectableItemBackgroundBorderless"
-                android:clickable="true"
-                android:focusable="true"
                 android:visibility="gone"
                 android:layout_marginEnd="8dp"/>
 
             <ImageView
                 android:id="@+id/btnSort"
-                android:layout_width="32dp"
-                android:layout_height="32dp"
+                android:layout_width="28dp"
+                android:layout_height="28dp"
                 android:src="@android:drawable/ic_menu_sort_by_size"
                 app:tint="?attr/colorPrimary"
                 android:background="?attr/selectableItemBackgroundBorderless"
+                android:layout_marginEnd="8dp"/>
+
+            <ImageView
+                android:id="@+id/btnToggleSelectionMode"
+                android:layout_width="28dp"
+                android:layout_height="28dp"
+                android:src="@drawable/baseline_library_add_check_24"
+                app:tint="?attr/colorPrimary"
+                android:background="?attr/selectableItemBackgroundBorderless"
                 android:clickable="true"
-                android:focusable="true" />
+                android:focusable="true"/>
         </LinearLayout>
     </LinearLayout>
 
+    <!-- 🎯 YATAY OYNATMA LİSTELERİ BAR (Chips)
+         Dikeyde taşmayı ve şarkı listesinin altında kalmayı önlemek için net pay bırakıldı -->
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/rvPlaylistsHorizontal"
+        android:layout_width="match_parent"
+        android:layout_height="45dp"
+        android:layout_marginTop="8dp"
+        android:orientation="horizontal"
+        android:clipToPadding="false"
+        app:layout_constraintTop_toBottomOf="@id/topBar"/>
+
+    <!-- 🔥 SABİT HİZALANMIŞ YER TUTUCU (SPACER)
+         Yatay kütüphane satırının yeni kararlı yüksekliğiyle birebir eşitlendi -->
+    <View
+        android:id="@+id/playlistSpacer"
+        android:layout_width="match_parent"
+        android:layout_height="45dp"
+        android:layout_marginTop="8dp"
+        android:visibility="gone"
+        app:layout_constraintTop_toBottomOf="@id/topBar" />
+
+    <!-- 🛡️ AKILLI DİKEY BARİYER (BARRIER)
+         Her iki elemanın da 54dp'lik net dikey hacminin bittiği yeri tam olarak işaretler -->
+    <androidx.constraintlayout.widget.Barrier
+        android:id="@+id/playlistBarrier"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        app:barrierDirection="bottom"
+        app:constraint_referenced_ids="rvPlaylistsHorizontal,playlistSpacer" />
+
+    <!-- 🎯 DİNAMİK ŞARKI SAYISI YAZISI-->
     <TextView
         android:id="@+id/tvListStatus"
         android:layout_width="wrap_content"
@@ -97,21 +150,30 @@
         android:text="Yükleniyor..."
         android:textSize="12sp"
         android:textColor="?android:attr/textColorSecondary"
-        android:layout_marginTop="4dp"
+        android:layout_marginTop="8dp"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/topBar"/>
+        app:layout_constraintTop_toBottomOf="@id/playlistBarrier"/>
 
+    <!-- Oynatma Listesine Şarkı Ekleme Başlığı
+         🎯 Mükemmel Düzeltme: Eksik orientation dikey (vertical) olarak tanımlanarak hata giderildi -->
+    <LinearLayout
+        android:id="@+id/layoutAddSongToPlaylist"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:orientation="vertical"
+        android:visibility="gone"
+        app:layout_constraintTop_toBottomOf="@id/tvListStatus"/>
+
+    <!-- 🎯 ANA ŞARKI LİSTESİ -->
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/rvLocalMusic"
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:layout_marginTop="12dp"
-
+        android:layout_marginTop="8dp"
         android:scrollbarTrackVertical="@android:color/transparent"
         android:scrollbarThumbVertical="?attr/colorSecondary"
         android:scrollbars="vertical"
         android:fastScrollEnabled="true"
-
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintTop_toBottomOf="@id/tvListStatus"
         tools:listitem="@layout/item_local_music" />
@@ -120,12 +182,11 @@
         android:id="@+id/scrollbarOverlay"
         android:layout_width="12dp"
         android:layout_height="0dp"
-        android:layout_marginTop="12dp"
+        android:layout_marginTop="8dp"
         android:layout_marginEnd="-6dp"
         app:layout_constraintEnd_toEndOf="@id/rvLocalMusic"
         app:layout_constraintTop_toTopOf="@id/rvLocalMusic"
         app:layout_constraintBottom_toBottomOf="@id/rvLocalMusic">
-
         <View
             android:id="@+id/indicatorDot"
             android:layout_width="10dp"
@@ -134,6 +195,95 @@
             android:backgroundTint="?attr/colorPrimary"
             android:alpha="0" />
     </FrameLayout>
+
+    <!-- 🎯 5. AKILLI ALT AKSİYON BARU -->
+    <LinearLayout
+        android:id="@+id/bottomActionBar"
+        android:layout_width="match_parent"
+        android:layout_height="45dp"
+        android:background="?attr/colorSurface"
+        android:orientation="horizontal"
+        android:gravity="center"
+        android:elevation="8dp"
+        android:visibility="gone"
+        app:layout_constraintBottom_toBottomOf="@id/playlistSpacer">
+
+        <!-- Başka Listeye Ekle Butonu -->
+        <LinearLayout
+            android:id="@+id/btnActionAddToPlaylist"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:gravity="center"
+            android:orientation="horizontal"
+            android:background="?attr/selectableItemBackground"
+            android:clickable="true"
+            android:focusable="true">
+            <ImageView
+                android:layout_width="20dp"
+                android:layout_height="20dp"
+                android:src="@android:drawable/ic_menu_add"
+                app:tint="?attr/colorSecondary"/>
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Listeye Ekle"
+                android:textSize="12sp"
+                android:textStyle="bold"
+                android:textColor="?android:attr/textColorPrimary"/>
+        </LinearLayout>
+
+        <!-- Oynatma Listesini Düzenle -->
+        <LinearLayout
+            android:id="@+id/btnActionRemoveFromPlaylist"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:gravity="center"
+            android:orientation="horizontal"
+            android:background="?attr/selectableItemBackground"
+            android:clickable="true"
+            android:focusable="true"
+            android:visibility="gone">
+            <ImageView
+                android:layout_width="20dp"
+                android:layout_height="20dp"
+                android:src="@android:drawable/ic_menu_close_clear_cancel"
+                app:tint="#F59E0B"/>
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Listeden Çıkar"
+                android:textSize="12sp"
+                android:textStyle="bold"
+                android:textColor="#F59E0B"/>
+        </LinearLayout>
+
+        <!-- Cihazdan Kalıcı Olarak Sil -->
+        <LinearLayout
+            android:id="@+id/btnActionDeleteSelected"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:gravity="center"
+            android:orientation="horizontal"
+            android:background="?attr/selectableItemBackground"
+            android:clickable="true"
+            android:focusable="true">
+            <ImageView
+                android:layout_width="20dp"
+                android:layout_height="20dp"
+                android:src="@android:drawable/ic_menu_delete"
+                app:tint="@color/primary_bordo"/>
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Cihazdan Sil"
+                android:textSize="12sp"
+                android:textStyle="bold"
+                android:textColor="@color/primary_bordo"/>
+        </LinearLayout>
+    </LinearLayout>
 
     <TextView
         android:id="@+id/tvNoResult"
@@ -144,13 +294,9 @@
         android:textStyle="bold"
         android:textColor="?android:attr/textColorHint"
         android:visibility="gone"
-        app:drawableTopCompat="@android:drawable/ic_menu_search"
-        app:drawableTint="?android:attr/textColorHint"
-        android:drawablePadding="8dp"
-        android:gravity="center"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/topBar"
+        app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintBottom_toBottomOf="parent"/>
 
 </androidx.constraintlayout.widget.ConstraintLayout>

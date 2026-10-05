@@ -51,37 +51,45 @@ class MusicService : Service() {
         }
     }
 
-    // 🔥 YENİ: 1. SES ODAĞI DEĞİŞİM DİNLEYİCİSİ (Telefon aramaları vb. için)
+    // 🎯 DÜZELTME 1: pauseResume() yerine doğrudan kesin durum komutları veriyoruz!
     private val audioFocusChangeListener = AudioManager.OnAudioFocusChangeListener { focusChange ->
         when (focusChange) {
             // Tamamen odak kaybı (Örn: Başka bir müzik uygulaması başlatıldı)
             AudioManager.AUDIOFOCUS_LOSS -> {
-                if (MusicManager.isPlaying.value == true) {
-                    MusicManager.pauseResume()
+                if (MusicManager.mediaPlayer?.isPlaying == true) {
+                    MusicManager.mediaPlayer?.pause()
+                    MusicManager.isPlaying.postValue(false) // Kesinlikle durduğunu bildir
                 }
             }
             // Geçici odak kaybı (Örn: Telefon çalıyor, arama cevaplandı veya asistan açıldı)
             AudioManager.AUDIOFOCUS_LOSS_TRANSIENT -> {
-                if (MusicManager.isPlaying.value == true) {
+                if (MusicManager.mediaPlayer?.isPlaying == true) {
                     wasPlayingBeforeFocusLoss = true
-                    MusicManager.pauseResume()
+                    MusicManager.mediaPlayer?.pause()
+                    MusicManager.isPlaying.postValue(false)
                 }
             }
             // Kısa süreli bildirim sesi geldiğinde (Ducking)
             AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK -> {
-                // Spotify gibi uygulamalar burada sesi %20'ye düşürür.
-                // İstersen doğrudan duraklatabilirsin de. Biz duraklatmayı seçiyoruz:
-                if (MusicManager.isPlaying.value == true) {
-                    wasPlayingBeforeFocusLoss = true
-                    MusicManager.pauseResume()
-                }
+                // Bildirim geldiğinde sesi tamamen kapatmak yerine geçici olarak hafifçe kısabilirsin:
+                try {
+                    if (MusicManager.mediaPlayer?.isPlaying == true) {
+                        MusicManager.mediaPlayer?.setVolume(0.2f, 0.2f) // Sesi kıs
+                    }
+                } catch (_: Exception) {}
             }
-            // Ses odağı geri kazanıldı (Örn: Telefon araması bitti)
+            // Ses odağı geri kazanıldı (Örn: Telefon araması bitti veya bildirim geçti)
             AudioManager.AUDIOFOCUS_GAIN -> {
-                if (wasPlayingBeforeFocusLoss) {
-                    MusicManager.pauseResume()
-                    wasPlayingBeforeFocusLoss = false
-                }
+                try {
+                    // Ducking'den çıkışta sesi eski haline getir
+                    MusicManager.mediaPlayer?.setVolume(1.0f, 1.0f)
+
+                    if (wasPlayingBeforeFocusLoss) {
+                        MusicManager.mediaPlayer?.start()
+                        MusicManager.isPlaying.postValue(true) // Kesinlikle başladığını bildir
+                        wasPlayingBeforeFocusLoss = false
+                    }
+                } catch (_: Exception) {}
             }
         }
     }
@@ -199,12 +207,13 @@ class MusicService : Service() {
             updatePlaybackState()
 
             if (isPlaying) {
-                // Müzik başladığında ses odağı iste ve kulaklık gözlemcisini kaydet
-                requestAudioFocus()
+                // 🎯 DÜZELTME 2: Odak isteğini sadece player o an çalmıyorken güvenle yap
+                if (MusicManager.mediaPlayer?.isPlaying == false) {
+                    requestAudioFocus()
+                }
                 registerNoisyReceiver()
                 handler.post(updateSeekbarTask)
             } else {
-                // Müzik durduğunda kulaklık gözlemcisini kaldır (odak kalabilir, arama gelirse diye)
                 unregisterNoisyReceiver()
                 handler.removeCallbacks(updateSeekbarTask)
             }

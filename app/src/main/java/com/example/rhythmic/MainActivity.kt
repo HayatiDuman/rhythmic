@@ -10,7 +10,6 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
-import com.bumptech.glide.Glide
 import com.chaquo.python.Python
 import com.chaquo.python.android.AndroidPlatform
 import com.google.android.material.bottomnavigation.BottomNavigationView
@@ -23,8 +22,7 @@ class MainActivity : AppCompatActivity() {
 
     // Fragmentlar
     private lateinit var homeFragment: HomeFragment
-    private lateinit var audioFragment: AudioFragment
-    //private lateinit var videoFragment: VideoFragment
+    private lateinit var audioFragment: AudioFragment    //private lateinit var videoFragment: VideoFragment
     private lateinit var settingsFragment: SettingsFragment
     private lateinit var activeFragment: Fragment
 
@@ -98,35 +96,29 @@ class MainActivity : AppCompatActivity() {
         val prefs = getSharedPreferences("RhythmicPrefs", Context.MODE_PRIVATE)
         val lastTab = prefs.getInt("last_tab", R.id.nav_home)
 
-        // 🔥 KRİTİK NOKTA: Ekran yeniden mi çiziliyor, yoksa ilk kez mi açılıyor?
         val homeTag = supportFragmentManager.findFragmentByTag("home")
 
         if (homeTag == null) {
-            // UYGULAMA İLK KEZ AÇILIYOR (Fragmentları sıfırdan yarat)
+            // UYGULAMA İLK KEZ AÇILIYOR
             homeFragment = HomeFragment()
-            audioFragment = AudioFragment()
-            //videoFragment = VideoFragment()
+            audioFragment = AudioFragment() // Kapsayıcı sayfamız
             settingsFragment = SettingsFragment()
 
             supportFragmentManager.beginTransaction().apply {
                 add(R.id.fragment_container, settingsFragment, "settings").hide(settingsFragment)
-                //add(R.id.fragment_container, videoFragment, "video").hide(videoFragment)
-                add(R.id.fragment_container, audioFragment, "audio").hide(audioFragment)
+                add(R.id.fragment_container, audioFragment, "library").hide(audioFragment)
                 add(R.id.fragment_container, homeFragment, "home").hide(homeFragment)
                 commit()
             }
         } else {
-            // TEMA DEĞİŞTİ! (Eski fragmentları hafızadan geri çağır, kasıntı yapma)
+            // HAFIZADAN GERİ YÜKLEME
             homeFragment = supportFragmentManager.findFragmentByTag("home") as HomeFragment
-            audioFragment = supportFragmentManager.findFragmentByTag("audio") as AudioFragment
-            //videoFragment = supportFragmentManager.findFragmentByTag("video") as VideoFragment
+            audioFragment = supportFragmentManager.findFragmentByTag("library") as AudioFragment
             settingsFragment = supportFragmentManager.findFragmentByTag("settings") as SettingsFragment
         }
 
-        // Aktif olanı belirle ve ekrana getir
         activeFragment = when (lastTab) {
             R.id.nav_audio -> audioFragment
-            //R.id.nav_video -> videoFragment
             R.id.nav_settings -> settingsFragment
             else -> homeFragment
         }
@@ -134,13 +126,11 @@ class MainActivity : AppCompatActivity() {
         supportFragmentManager.beginTransaction().show(activeFragment).commit()
         bottomNav.selectedItemId = lastTab
 
-        // Tıklama olayları...
         bottomNav.setOnItemSelectedListener { item ->
             prefs.edit().putInt("last_tab", item.itemId).apply()
             when (item.itemId) {
                 R.id.nav_home -> switchFragment(homeFragment)
-                R.id.nav_audio -> switchFragment(audioFragment)
-                //R.id.nav_video -> switchFragment(videoFragment)
+                R.id.nav_audio -> switchFragment(audioFragment) // Tertemiz geçiş
                 R.id.nav_settings -> switchFragment(settingsFragment)
             }
             true
